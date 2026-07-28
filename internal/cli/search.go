@@ -22,6 +22,12 @@ func newSearchCmd() *cobra.Command {
 		newznabAPIKey string
 		newznabName   string
 		jsonOutput    bool
+		searchType    string
+		categories    []int
+		season        int
+		episode       int
+		imdbID        string
+		tmdbID        string
 	)
 
 	cmd := &cobra.Command{
@@ -67,7 +73,15 @@ d'indexeurs multiples arrive en Slice E).`,
 			}
 
 			engine := search.NewEngine(providers)
-			result := engine.Search(cmd.Context(), search.Query{Keywords: keywords})
+			result := engine.Search(cmd.Context(), search.Query{
+				Keywords:   keywords,
+				Categories: categories,
+				SearchType: searchType,
+				Season:     season,
+				Episode:    episode,
+				IMDbID:     imdbID,
+				TMDBID:     tmdbID,
+			})
 
 			for _, perr := range result.Errors {
 				fmt.Printf("⚠ %s\n", perr.Error())
@@ -92,6 +106,12 @@ d'indexeurs multiples arrive en Slice E).`,
 	cmd.Flags().StringVar(&newznabAPIKey, "newznab-apikey", "", "Clé API de l'indexeur Newznab générique")
 	cmd.Flags().StringVar(&newznabName, "newznab-name", "", "Nom affiché de l'indexeur Newznab générique")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Sortie au format JSON")
+	cmd.Flags().StringVar(&searchType, "type", "search", "Type de recherche (search, tvsearch, movie, music, book)")
+	cmd.Flags().IntSliceVar(&categories, "category", nil, "Filtrer par catégorie(s) Newznab (repeatable)")
+	cmd.Flags().IntVar(&season, "season", 0, "Numéro de saison (pour tvsearch)")
+	cmd.Flags().IntVar(&episode, "episode", 0, "Numéro d'épisode (pour tvsearch)")
+	cmd.Flags().StringVar(&imdbID, "imdb-id", "", "ID IMDB (pour movie/tvsearch)")
+	cmd.Flags().StringVar(&tmdbID, "tmdb-id", "", "ID TMDB (pour movie)")
 
 	return cmd
 }

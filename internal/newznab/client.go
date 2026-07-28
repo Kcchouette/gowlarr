@@ -46,6 +46,14 @@ func (c *Client) ID() string               { return c.IndexerID }
 func (c *Client) Name() string              { return c.IndexerName }
 func (c *Client) Protocol() model.Protocol { return model.ProtocolUsenet }
 
+const (
+	SearchTypeSearch   = "search"
+	SearchTypeTVSearch = "tvsearch"
+	SearchTypeMovie    = "movie"
+	SearchTypeMusic    = "music"
+	SearchTypeBook     = "book"
+)
+
 // rssFeed / rssItem / rssAttr modélisent la réponse RSS 2.0 + extension
 // newznab:attr renvoyée par l'API Newznab (t=search|tvsearch|movie|music|book).
 type rssFeed struct {
@@ -77,20 +85,41 @@ func (it rssItem) attr(name string) string {
 	return ""
 }
 
-// Search construit la requête `t=search` (ou tvsearch/movie/music/book selon
-// les catégories demandées reste un raffinement post-MVP ; le MVP couvre la
-// recherche générique par mots-clés) et parse la réponse RSS + newznab:attr.
+// Search construit la requête avec le type de recherche approprié
+// et parse la réponse RSS + newznab:attr.
 func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
 	params := url.Values{}
-	params.Set("t", "search")
+
+	// Use SearchType from query, default to "search"
+	searchType := q.SearchType
+	if searchType == "" {
+		searchType = SearchTypeSearch
+	}
+	params.Set("t", searchType)
 	params.Set("apikey", c.APIKey)
-	params.Set("q", q.Keywords)
+	if q.Keywords != "" {
+		params.Set("q", q.Keywords)
+	}
 	if len(q.Categories) > 0 {
 		cats := make([]string, len(q.Categories))
 		for i, cat := range q.Categories {
 			cats[i] = strconv.Itoa(cat)
 		}
 		params.Set("cat", strings.Join(cats, ","))
+	}
+
+	// Type-specific parameters
+	if q.Season > 0 {
+		params.Set("season", strconv.Itoa(q.Season))
+	}
+	if q.Episode > 0 {
+		params.Set("ep", strconv.Itoa(q.Episode))
+	}
+	if q.IMDbID != "" {
+		params.Set("imdbid", q.IMDbID)
+	}
+	if q.TMDBID != "" {
+		params.Set("tmdbid", q.TMDBID)
 	}
 
 	reqURL := fmt.Sprintf("%s/api?%s", c.BaseURL, params.Encode())
@@ -160,4 +189,104 @@ func parseRSSDate(raw string) time.Time {
 		}
 	}
 	return time.Time{}
+}
+
+// Caps represents the capabilities of a Newznab indexer.
+type Caps struct {
+	SearchTypes []string
+	Categories  []Category
+}
+
+type Category struct {
+	ID   int
+	Name string
+}
+
+// capsXML represents the XML response from /api?t=caps
+type capsXML struct {
+	XMLName xml.Name `xml:"caps"`
+	Searching struct {
+		Search struct {
+			Available string `xml:"available,attr"`
+		} `xml:"search"`
+		TVSearch struct {
+			Available string `xml:"available,attr"`
+		} `xml:"tv-search"`
+		MovieSearch struct {
+			Available string `xml:"available,attr"`
+		} `xml:"movie-search"`
+		MusicSearch struct {
+			Available string `xml:"available,attr"`
+		} `xml:"music-search"`
+		BookSearch struct {
+			Available string `xml:"available,attr"`
+		} `xml:"book-search"`
+	} `xml:"searching"`
+	Categories struct {
+		Category []capsCategory `xml:"category"`
+	} `xml:"categories"`
+}
+
+type capsCategory struct {
+	ID     string `xml:"id,attr"`
+	Name   string `xml:"name,attr"`
+	Subcat []struct {
+		ID   string `xml:"id,attr"`
+		Name string `xml:"name,attr"`
+	} `xml:"subcat"`
+}
+
+// Caps queries the indexer for its capabilities.
+func (c *Client) Caps(ctx context.Context) (Caps, error) {
+	reqURL := fmt.Sprintf("%s/api?t=caps&apikey=%s", c.BaseURL, c.APIKey)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return Caps{}, fmt.Errorf("building caps request: %w", err)
+	}
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return Caps{}, fmt.Errorf("querying caps from %s: %w", c.IndexerID, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return Caps{}, fmt.Errorf("caps from %s returned HTTP %d", c.IndexerID, resp.StatusCode)
+	}
+
+	var caps capsXML
+	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
+		return Caps{}, fmt.Errorf("parsing caps from %s: %w", c.IndexerID, err)
+	}
+
+	result := Caps{}
+
+	// Determine available search types
+	if caps.Searching.Search.Available == "yes" {
+		result.SearchTypes = append(result.SearchTypes, SearchTypeSearch)
+	}
+	if caps.Searching.TVSearch.Available == "yes" {
+		result.SearchTypes = append(result.SearchTypes, SearchTypeTVSearch)
+	}
+	if caps.Searching.MovieSearch.Available == "yes" {
+		result.SearchTypes = append(result.SearchTypes, SearchTypeMovie)
+	}
+	if caps.Searching.MusicSearch.Available == "yes" {
+		result.SearchTypes = append(result.SearchTypes, SearchTypeMusic)
+	}
+	if caps.Searching.BookSearch.Available == "yes" {
+		result.SearchTypes = append(result.SearchTypes, SearchTypeBook)
+	}
+
+	// Parse categories
+	for _, cat := range caps.Categories.Category {
+		id, _ := strconv.Atoi(cat.ID)
+		result.Categories = append(result.Categories, Category{ID: id, Name: cat.Name})
+		for _, sub := range cat.Subcat {
+			subID, _ := strconv.Atoi(sub.ID)
+			result.Categories = append(result.Categories, Category{ID: subID, Name: sub.Name})
+		}
+	}
+
+	return result, nil
 }
