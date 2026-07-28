@@ -36,6 +36,7 @@ Vous êtes seul responsable de l'usage que vous faites de cet outil.`,
 	root.AddCommand(newIndexerCmd())
 	root.AddCommand(newSearchCmd())
 	root.AddCommand(newDownloadCmd())
+	root.AddCommand(newServeCmd())
 
 	return root
 }
