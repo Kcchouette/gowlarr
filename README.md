@@ -1,10 +1,10 @@
 # Gowlarr
 
-**⚠️ Disclaimer légal / non-affiliation**
+**Disclaimer légal / non-affiliation**
 
 Gowlarr est un outil personnel, développé de manière indépendante, qui n'est **ni
 affilié, ni approuvé, ni sponsorisé** par le projet [Prowlarr](https://github.com/Prowlarr/Prowlarr),
-[Servarr](https://wiki.servarr.com/) ou tout autre projet de l'écosystème *arr*.
+[Servarr](https://wiki.servarr.com/) ou tout autre projet de l'écosystème \*arr.
 
 Gowlarr est un outil d'automatisation neutre : il fournit un moyen technique de
 rechercher et de résoudre des liens (torrent/magnet/nzb) sur des sites tiers que
@@ -18,31 +18,109 @@ avec ce projet : elles sont téléchargées à l'exécution, à la demande de l'
 depuis le dépôt public [Prowlarr/Indexers](https://github.com/Prowlarr/Indexers), qui
 reste la propriété de ses auteurs respectifs.
 
-## Statut
+## Installation
 
-Projet en cours de développement (MVP). Voir `plan.md` (hors dépôt) pour la roadmap.
+```bash
+# Depuis les sources (Go 1.25+ requis)
+go install github.com/Kcchouette/gowlarr/cmd/gowlarr@latest
 
-## Licence
-
-Le code de ce projet est distribué sous licence MIT (voir `LICENSE`). Cette licence
-ne s'applique qu'au code de Gowlarr lui-même, pas aux définitions Cardigann tierces
-téléchargées à l'exécution. Le moteur Cardigann a été extrait dans le module Go
-séparé `github.com/Kcchouette/cardigann-go`, distribué sous **LGPL-3.0** ; Gowlarr
-l'utilise via un `replace ../cardigann-go` local tant que le module n'est pas publié.
-
-## Installation / Build
-
-```powershell
+# Ou depuis le dépôt cloné
+git clone https://github.com/Kcchouette/gowlarr.git
+cd gowlarr
 go build ./cmd/gowlarr
 ```
 
-Le dépôt compagnon `github.com/Kcchouette/cardigann-go` porte les packages réutilisables
-du moteur Cardigann (parsing YAML, templates, filtres, client HTTP, login, engine).
+## Utilisation
 
-## Utilisation (MVP)
+### Initialiser la configuration
 
-```powershell
+```bash
 gowlarr config init
-gowlarr search "some query"
-gowlarr download <result-id>
 ```
+
+Crée le fichier de configuration par défaut (`~/.config/gowlarr/config.json` ou
+`%APPDATA%/gowlarr/config.json` sous Windows) et la base SQLite.
+
+### Synchroniser les définitions d'indexeurs
+
+```bash
+gowlarr defs sync          # Télécharge les définitions Cardigann depuis GitHub
+gowlarr defs list           # Liste les définitions disponibles
+gowlarr defs show <id>      # Affiche le détail d'une définition
+```
+
+### Gérer les indexeurs
+
+```bash
+gowlarr indexer add <definition-id>           # Ajouter un indexeur
+gowlarr indexer list                          # Lister les indexeurs configurés
+gowlarr indexer test <id>                     # Tester la connexion
+gowlarr indexer enable/disable <id>          # Activer/désactiver
+gowlarr indexer remove <id>                   # Supprimer
+```
+
+### Rechercher
+
+```bash
+gowlarr search "ubuntu"                                  # Recherche simple
+gowlarr search "ubuntu" --indexer 1337x                  # Indexeur spécifique
+gowlarr search "ubuntu" --protocol torrent               # Filtrer par protocole
+gowlarr search "ubuntu" --categories 2000,2010           # Filtrer par catégorie
+gowlarr search "ubuntu" --json                           # Sortie JSON
+```
+
+### Télécharger
+
+```bash
+gowlarr download <result-id>                # Télécharger un résultat
+gowlarr download <result-id> -o ./out.torrent  # Sauvegarder dans un fichier
+gowlarr download <result-id> --stdout       # Afficher sur stdout
+```
+
+### Usenet (Newznab)
+
+```bash
+gowlarr search "query" --newznab-url https://indexer.example.com --newznab-apikey YOUR_KEY
+```
+
+## Commandes disponibles
+
+| Commande | Description |
+|----------|-------------|
+| `config init` | Créer la configuration par défaut |
+| `config show` | Afficher la configuration active |
+| `defs sync` | Synchroniser les définitions depuis GitHub |
+| `defs list` | Lister les définitions disponibles |
+| `defs show <id>` | Afficher le détail d'une définition |
+| `indexer add <id>` | Ajouter un indexeur |
+| `indexer list` | Lister les indexeurs configurés |
+| `indexer test <id>` | Tester la connexion d'un indexeur |
+| `indexer enable/disable <id>` | Activer/désactiver un indexeur |
+| `indexer remove <id>` | Supprimer un indexeur |
+| `search <query>` | Rechercher sur les indexeurs |
+| `download <id>` | Télécharger un résultat |
+
+## Architecture
+
+```
+cmd/gowlarr/          Point d'entrée CLI
+internal/cli/         Commandes Cobra
+internal/config/      Gestion de la configuration
+internal/store/       Persistance SQLite (migrations, indexeurs, résultats)
+internal/model/       Types partagés (ReleaseInfo, Protocol)
+internal/search/      Moteur de recherche (providers parallèles)
+internal/download/    Résolution des liens (magnet, torrent, nzb)
+internal/newznab/     Client Newznab natif
+internal/cardigannadapter/  Adaptateur vers cardigann-go
+```
+
+## Dépendances
+
+- [cardigann-go](https://github.com/Kcchouette/cardigann-go) — Moteur Cardigann (LGPL-3.0)
+- [cobra](https://github.com/spf13/cobra) — Framework CLI
+- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — SQLite pur Go (sans cgo)
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE). La licence ne s'applique qu'au code de Gowlarr lui-même,
+pas aux définitions Cardigann tierces téléchargées à l'exécution.
