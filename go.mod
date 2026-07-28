@@ -3,12 +3,10 @@ module github.com/Kcchouette/gowlarr
 go 1.25.0
 
 require (
-	github.com/Kcchouette/cardigann-go v0.0.0
+	github.com/Kcchouette/cardigann-go v0.1.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.54.0
 )
-
-replace github.com/Kcchouette/cardigann-go => ../cardigann-go
 
 require (
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect
