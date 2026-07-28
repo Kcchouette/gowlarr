@@ -34,12 +34,18 @@ type httpDoer interface {
 
 // Resolver résout un ReleaseInfo en Artifact téléchargeable.
 type Resolver struct {
-	HTTPClient httpDoer
+	HTTPClient  httpDoer
+	AuthHeaders map[string]string
 }
 
 // NewResolver construit un Resolver avec un client HTTP par défaut.
 func NewResolver() *Resolver {
 	return &Resolver{HTTPClient: &http.Client{Timeout: 30 * time.Second}}
+}
+
+// NewResolverWithClient construit un Resolver avec un client HTTP spécifique.
+func NewResolverWithClient(client httpDoer, authHeaders map[string]string) *Resolver {
+	return &Resolver{HTTPClient: client, AuthHeaders: authHeaders}
 }
 
 // DownloadSelectorStep décrit une étape de résolution intermédiaire Cardigann
@@ -133,6 +139,11 @@ func (r *Resolver) fetch(ctx context.Context, link string) ([]byte, error) {
 		return nil, fmt.Errorf("building download request: %w", err)
 	}
 	req.Header.Set("User-Agent", "gowlarr/0.1 (+https://github.com/Kcchouette/gowlarr)")
+
+	// Add auth headers if provided
+	for header, value := range r.AuthHeaders {
+		req.Header.Set(header, value)
+	}
 
 	resp, err := r.HTTPClient.Do(req)
 	if err != nil {

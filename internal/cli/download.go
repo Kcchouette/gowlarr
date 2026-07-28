@@ -2,12 +2,19 @@ package cli
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
+	"github.com/Kcchouette/cardigann-go/definition"
+	"github.com/Kcchouette/cardigann-go/httpclient"
 	"github.com/Kcchouette/gowlarr/internal/download"
+	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 func newDownloadCmd() *cobra.Command {
@@ -40,7 +47,41 @@ préciser vous-même le protocole. L'ID provient d'un précédent "gowlarr searc
 				return err
 			}
 
-			resolver := download.NewResolver()
+			// Try to get an authenticated HTTP client for the indexer
+			var httpClient interface{ Do(*http.Request) (*http.Response, error) } = &http.Client{Timeout: 30 * time.Second}
+			var authHeaders map[string]string
+			if release.IndexerID != "" {
+				if cfg, err := st.GetIndexerConfig(release.IndexerID, nil); err == nil {
+					if raw, err := st.GetDefinitionYAML(cfg.DefinitionID, "v11"); err == nil {
+						if def, err := definition.Parse([]byte(raw)); err == nil {
+							if client, err := httpclient.New(httpclient.Options{
+								IndexerID: cfg.ID,
+								Persister: store.NewCookiePersisterAdapter(st, nil),
+								ProxyURL:  cfg.ProxyURL,
+							}); err == nil {
+								_ = cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)
+								httpClient = client
+							}
+							// Extract auth headers from definition
+							if def.Search.Headers != nil {
+								authHeaders = make(map[string]string)
+								for header, vals := range def.Search.Headers {
+									if len(vals) > 0 {
+										// Render the template with config values
+										tmplStr := vals[0]
+										for k, v := range cfg.Settings {
+											tmplStr = strings.ReplaceAll(tmplStr, "{{ .Config."+k+" }}", v)
+										}
+										authHeaders[header] = tmplStr
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+
+			resolver := download.NewResolverWithClient(httpClient, authHeaders)
 			artifact, err := resolver.Resolve(cmd.Context(), release)
 			if err != nil {
 				return fmt.Errorf("resolving download for %q: %w", release.Title, err)
