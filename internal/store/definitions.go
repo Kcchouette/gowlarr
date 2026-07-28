@@ -73,3 +73,18 @@ func (s *Store) ListDefinitions(version string) ([]DefinitionMeta, error) {
 	}
 	return metas, rows.Err()
 }
+
+// versionsByPriority returns versions in priority order (v11 first, then v10-v1).
+var versionsByPriority = []string{"v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"}
+
+// GetDefinitionYAMLFallback searches for a definition starting from v11,
+// then falls back to earlier versions if not found.
+func (s *Store) GetDefinitionYAMLFallback(id string) (rawYAML, version string, err error) {
+	for _, v := range versionsByPriority {
+		raw, err := s.GetDefinitionYAML(id, v)
+		if err == nil {
+			return raw, v, nil
+		}
+	}
+	return "", "", fmt.Errorf("definition %q not found in any version", id)
+}
