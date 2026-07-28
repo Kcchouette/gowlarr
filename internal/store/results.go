@@ -96,7 +96,9 @@ func (s *Store) GetResult(id int64) (model.ReleaseInfo, error) {
 	if pd, err := time.Parse(time.RFC3339, publishDate); err == nil {
 		r.PublishDate = pd
 	}
-	_ = json.Unmarshal([]byte(categoriesJSON), &r.Categories)
+	if err := json.Unmarshal([]byte(categoriesJSON), &r.Categories); err != nil {
+		return model.ReleaseInfo{}, fmt.Errorf("unmarshaling categories for result %d: %w", id, err)
+	}
 
 	return r, nil
 }

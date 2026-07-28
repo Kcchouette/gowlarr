@@ -106,7 +106,10 @@ func (s *Store) DeleteIndexerConfig(id string) error {
 	if err != nil {
 		return fmt.Errorf("deleting indexer config %s: %w", id, err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking delete result: %w", err)
+	}
 	if n == 0 {
 		return fmt.Errorf("no indexer config with id %q", id)
 	}
@@ -120,7 +123,10 @@ func (s *Store) SetIndexerEnabled(id string, enabled bool) error {
 	if err != nil {
 		return fmt.Errorf("updating indexer config %s: %w", id, err)
 	}
-	n, _ := res.RowsAffected()
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking update result: %w", err)
+	}
 	if n == 0 {
 		return fmt.Errorf("no indexer config with id %q", id)
 	}
@@ -162,9 +168,13 @@ func doScanIndexerConfig(s scanner, key []byte) (IndexerConfig, error) {
 		if err != nil {
 			return IndexerConfig{}, fmt.Errorf("decrypting settings: %w", err)
 		}
-		_ = json.Unmarshal(decrypted, &cfg.Settings)
+		if err := json.Unmarshal(decrypted, &cfg.Settings); err != nil {
+			return IndexerConfig{}, fmt.Errorf("unmarshaling decrypted settings: %w", err)
+		}
 	} else if settingsJSON != "" {
-		_ = json.Unmarshal([]byte(settingsJSON), &cfg.Settings)
+		if err := json.Unmarshal([]byte(settingsJSON), &cfg.Settings); err != nil {
+			return IndexerConfig{}, fmt.Errorf("unmarshaling settings: %w", err)
+		}
 	}
 	return cfg, nil
 }

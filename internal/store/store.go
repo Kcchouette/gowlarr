@@ -54,12 +54,6 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-// DB expose la connexion SQL brute pour les packages qui en ont besoin
-// (recherche, définitions, etc.).
-func (s *Store) DB() *sql.DB {
-	return s.db
-}
-
 func (s *Store) migrate() error {
 	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS schema_migrations (
 		version INTEGER PRIMARY KEY,

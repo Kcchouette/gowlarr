@@ -26,12 +26,12 @@ type ReleaseInfo struct {
 	DownloadLink string // Lien direct (magnet, .torrent, .nzb) ou lien à résoudre.
 	InfoHash     string
 
-	Size       int64 // en octets, 0 si inconnu.
+	Size        int64 // en octets, 0 si inconnu.
 	PublishDate time.Time
 
-	Seeders  int
-	Peers    int
-	Grabs    int
+	Seeders int
+	Peers   int
+	Grabs   int
 
 	Categories []int
 

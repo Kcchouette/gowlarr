@@ -160,9 +160,9 @@ func WriteTorznabResponse(w http.ResponseWriter, releases []model.ReleaseInfo, i
 		}
 
 		item := rssItem{
-			Title:  r.Title,
-			Link:   r.DownloadLink,
-			GUID:   r.DownloadLink,
+			Title:    r.Title,
+			Link:     r.DownloadLink,
+			GUID:     r.DownloadLink,
 			Category: cats,
 			Enclosure: enclosure{
 				URL:    r.DownloadLink,

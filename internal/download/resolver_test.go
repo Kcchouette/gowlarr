@@ -16,7 +16,7 @@ func TestResolver_DirectTorrent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	r := NewResolver()
+	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
 	release := model.ReleaseInfo{Title: "My.Release", DownloadLink: server.URL + "/dl", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
@@ -35,7 +35,7 @@ func TestResolver_DirectTorrent(t *testing.T) {
 }
 
 func TestResolver_Magnet(t *testing.T) {
-	r := NewResolver()
+	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
 	release := model.ReleaseInfo{Title: "Magnet.Release", DownloadLink: "magnet:?xt=urn:btih:abc", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
@@ -63,7 +63,7 @@ func TestResolver_IntermediatePage(t *testing.T) {
 	defer server.Close()
 	realURL = server.URL + "/real.torrent"
 
-	r := NewResolver()
+	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
 	release := model.ReleaseInfo{Title: "Indirect.Release", DownloadLink: server.URL + "/details/1", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release, DownloadSelectorStep{Selector: "a.dl", Attribute: "href"})

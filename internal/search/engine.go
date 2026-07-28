@@ -46,10 +46,14 @@ type Result struct {
 // Search interroge tous les providers en parallèle et agrège les résultats,
 // triés par date de publication décroissante puis par seeders décroissants.
 func (e *Engine) Search(ctx context.Context, q Query) Result {
+	engineTimeout := e.PerProviderTTL * 2
+	ctx, cancel := context.WithTimeout(ctx, engineTimeout)
+	defer cancel()
+
 	var (
-		mu      sync.Mutex
-		wg      sync.WaitGroup
-		result  Result
+		mu     sync.Mutex
+		wg     sync.WaitGroup
+		result Result
 	)
 
 	for _, p := range e.Providers {

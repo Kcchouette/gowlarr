@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -41,8 +42,8 @@ func New(addr, apiKey string, engine *search.Engine, st *store.Store) *Server {
 }
 
 func (s *Server) ListenAndServe() error {
-	fmt.Printf("Gowlarr server listening on %s\n", s.addr)
-	fmt.Printf("API endpoint: http://%s/api?t=search&q=<query>&apikey=<key>\n", s.addr)
+	slog.Info("serveur démarré", "addr", s.addr)
+	slog.Info("endpoint API", "url", fmt.Sprintf("http://%s/api?t=search&q=<query>&apikey=<key>", s.addr))
 	return s.srv.ListenAndServe()
 }
 

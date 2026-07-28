@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Kcchouette/gowlarr/internal/config"
+	golog "github.com/Kcchouette/gowlarr/internal/log"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
@@ -21,6 +22,8 @@ func Execute() {
 }
 
 func newRootCmd() *cobra.Command {
+	var verbose bool
+
 	root := &cobra.Command{
 		Use:   "gowlarr",
 		Short: "Gowlarr — gestionnaire d'indexeurs torrent/usenet en Go (MVP)",
@@ -29,7 +32,16 @@ torrent/usenet sur des indexeurs configurés par l'utilisateur.
 
 Non-affilié à Prowlarr/Servarr. Voir le README pour le disclaimer légal complet.
 Vous êtes seul responsable de l'usage que vous faites de cet outil.`,
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			level := "info"
+			if verbose {
+				level = "debug"
+			}
+			golog.SetupLogger(level, false)
+		},
 	}
+
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Activer les messages de debug détaillés")
 
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newDefsCmd())

@@ -35,7 +35,7 @@ func New() *Provider {
 }
 
 func (p *Provider) ID() string               { return "apibay" }
-func (p *Provider) Name() string              { return "The Pirate Bay (apibay)" }
+func (p *Provider) Name() string             { return "The Pirate Bay (apibay)" }
 func (p *Provider) Protocol() model.Protocol { return model.ProtocolTorrent }
 
 // item représente un enregistrement brut de la réponse JSON apibay.

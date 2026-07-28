@@ -12,10 +12,10 @@ func NewCookiePersisterAdapter(st *Store, key []byte) *CookiePersisterAdapter {
 	return &CookiePersisterAdapter{store: st, key: key}
 }
 
-func (a *CookiePersisterAdapter) LoadCookies(indexerID string) (string, error) {
+func (a *CookiePersisterAdapter) Load(indexerID string) (string, error) {
 	return a.store.LoadCookies(indexerID, a.key)
 }
 
-func (a *CookiePersisterAdapter) SaveCookies(indexerID string, cookieJSON string) error {
-	return a.store.SaveCookies(indexerID, cookieJSON, a.key)
+func (a *CookiePersisterAdapter) Store(indexerID string, data string) error {
+	return a.store.SaveCookies(indexerID, data, a.key)
 }

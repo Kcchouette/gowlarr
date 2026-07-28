@@ -1,6 +1,9 @@
 package server
 
-import "net/http"
+import (
+	"crypto/subtle"
+	"net/http"
+)
 
 func (s *Server) requireAPIKey(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -10,7 +13,7 @@ func (s *Server) requireAPIKey(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		apikey := r.URL.Query().Get("apikey")
-		if apikey != s.apiKey {
+		if subtle.ConstantTimeCompare([]byte(apikey), []byte(s.apiKey)) != 1 {
 			http.Error(w, "Invalid API key", http.StatusForbidden)
 			return
 		}

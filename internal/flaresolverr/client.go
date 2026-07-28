@@ -33,11 +33,11 @@ type Response struct {
 }
 
 type Cookie struct {
-	Name     string  `json:"name"`
-	Value    string  `json:"value"`
-	Domain   string  `json:"domain"`
-	Path     string  `json:"path"`
-	Expires  float64 `json:"expires"`
+	Name    string  `json:"name"`
+	Value   string  `json:"value"`
+	Domain  string  `json:"domain"`
+	Path    string  `json:"path"`
+	Expires float64 `json:"expires"`
 }
 
 func NewClient(baseURL string) *Client {
@@ -98,7 +98,7 @@ func (c *Client) Get(ctx context.Context, req Request) (Response, error) {
 
 func (c *Client) CreateSession(ctx context.Context, name string) error {
 	payload := map[string]interface{}{
-		"cmd":   "sessions.create",
+		"cmd":     "sessions.create",
 		"session": name,
 	}
 
@@ -127,7 +127,7 @@ func (c *Client) CreateSession(ctx context.Context, name string) error {
 
 func (c *Client) DestroySession(ctx context.Context, name string) error {
 	payload := map[string]interface{}{
-		"cmd":   "sessions.destroy",
+		"cmd":     "sessions.destroy",
 		"session": name,
 	}
 

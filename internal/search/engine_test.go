@@ -19,7 +19,7 @@ type fakeProvider struct {
 }
 
 func (f *fakeProvider) ID() string               { return f.id }
-func (f *fakeProvider) Name() string              { return f.id }
+func (f *fakeProvider) Name() string             { return f.id }
 func (f *fakeProvider) Protocol() model.Protocol { return model.ProtocolTorrent }
 func (f *fakeProvider) Search(ctx context.Context, q Query) ([]model.ReleaseInfo, error) {
 	select {

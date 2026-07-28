@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/Kcchouette/cardigann-go/selector"
 	"github.com/Kcchouette/gowlarr/internal/model"
@@ -36,11 +35,6 @@ type httpDoer interface {
 type Resolver struct {
 	HTTPClient  httpDoer
 	AuthHeaders map[string]string
-}
-
-// NewResolver construit un Resolver avec un client HTTP par défaut.
-func NewResolver() *Resolver {
-	return &Resolver{HTTPClient: &http.Client{Timeout: 30 * time.Second}}
 }
 
 // NewResolverWithClient construit un Resolver avec un client HTTP spécifique.

@@ -24,11 +24,11 @@ import (
 
 // Client interroge un indexeur usenet parlant le protocole Newznab standard.
 type Client struct {
-	BaseURL    string
-	APIKey     string
-	IndexerID  string
+	BaseURL     string
+	APIKey      string
+	IndexerID   string
 	IndexerName string
-	HTTPClient *http.Client
+	HTTPClient  *http.Client
 }
 
 // New construit un client Newznab générique.
@@ -43,7 +43,7 @@ func New(id, name, baseURL, apiKey string) *Client {
 }
 
 func (c *Client) ID() string               { return c.IndexerID }
-func (c *Client) Name() string              { return c.IndexerName }
+func (c *Client) Name() string             { return c.IndexerName }
 func (c *Client) Protocol() model.Protocol { return model.ProtocolUsenet }
 
 const (
@@ -204,7 +204,7 @@ type Category struct {
 
 // capsXML represents the XML response from /api?t=caps
 type capsXML struct {
-	XMLName xml.Name `xml:"caps"`
+	XMLName   xml.Name `xml:"caps"`
 	Searching struct {
 		Search struct {
 			Available string `xml:"available,attr"`
