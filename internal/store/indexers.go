@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+
+	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
 // IndexerConfig représente une instance configurée d'indexeur (association
@@ -20,40 +22,62 @@ type IndexerConfig struct {
 }
 
 // SaveIndexerConfig upsert une configuration d'indexeur.
-func (s *Store) SaveIndexerConfig(cfg IndexerConfig) error {
+// Si key est non nil, les settings sont chiffrés en BLOB (settings_enc).
+// Sinon, ils restent en clair en TEXT (settings_json) pour rétrocompatibilité.
+func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 	settingsJSON, err := json.Marshal(cfg.Settings)
 	if err != nil {
 		return fmt.Errorf("marshaling settings: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	_, err = s.db.Exec(`INSERT INTO indexer_configs
-		(id, definition_id, protocol, enabled, settings_json, proxy_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(id) DO UPDATE SET definition_id = excluded.definition_id,
-			protocol = excluded.protocol, enabled = excluded.enabled,
-			settings_json = excluded.settings_json, proxy_url = excluded.proxy_url,
-			updated_at = excluded.updated_at`,
-		cfg.ID, cfg.DefinitionID, cfg.Protocol, boolToInt(cfg.Enabled), string(settingsJSON),
-		nullableString(cfg.ProxyURL), now, now,
-	)
-	if err != nil {
-		return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
+	if key != nil {
+		encrypted, err := crypt.Encrypt(settingsJSON, key)
+		if err != nil {
+			return fmt.Errorf("encrypting settings: %w", err)
+		}
+		_, err = s.db.Exec(`INSERT INTO indexer_configs
+			(id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET definition_id = excluded.definition_id,
+				protocol = excluded.protocol, enabled = excluded.enabled,
+				settings_json = excluded.settings_json, settings_enc = excluded.settings_enc,
+				proxy_url = excluded.proxy_url, updated_at = excluded.updated_at`,
+			cfg.ID, cfg.DefinitionID, cfg.Protocol, boolToInt(cfg.Enabled),
+			"", encrypted, nullableString(cfg.ProxyURL), now, now,
+		)
+		if err != nil {
+			return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
+		}
+	} else {
+		_, err = s.db.Exec(`INSERT INTO indexer_configs
+			(id, definition_id, protocol, enabled, settings_json, proxy_url, created_at, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET definition_id = excluded.definition_id,
+				protocol = excluded.protocol, enabled = excluded.enabled,
+				settings_json = excluded.settings_json, proxy_url = excluded.proxy_url,
+				updated_at = excluded.updated_at`,
+			cfg.ID, cfg.DefinitionID, cfg.Protocol, boolToInt(cfg.Enabled),
+			string(settingsJSON), nullableString(cfg.ProxyURL), now, now,
+		)
+		if err != nil {
+			return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
+		}
 	}
 	return nil
 }
 
 // GetIndexerConfig récupère une configuration d'indexeur par son ID.
-func (s *Store) GetIndexerConfig(id string) (IndexerConfig, error) {
-	row := s.db.QueryRow(`SELECT id, definition_id, protocol, enabled, settings_json, proxy_url
+func (s *Store) GetIndexerConfig(id string, key []byte) (IndexerConfig, error) {
+	row := s.db.QueryRow(`SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url
 		FROM indexer_configs WHERE id = ?`, id)
-	return scanIndexerConfig(row)
+	return scanIndexerConfig(row, key)
 }
 
 // ListIndexerConfigs liste toutes les configurations, ou uniquement les
 // activées si onlyEnabled est vrai.
-func (s *Store) ListIndexerConfigs(onlyEnabled bool) ([]IndexerConfig, error) {
-	query := `SELECT id, definition_id, protocol, enabled, settings_json, proxy_url FROM indexer_configs`
+func (s *Store) ListIndexerConfigs(onlyEnabled bool, key []byte) ([]IndexerConfig, error) {
+	query := `SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url FROM indexer_configs`
 	if onlyEnabled {
 		query += ` WHERE enabled = 1`
 	}
@@ -67,7 +91,7 @@ func (s *Store) ListIndexerConfigs(onlyEnabled bool) ([]IndexerConfig, error) {
 
 	var configs []IndexerConfig
 	for rows.Next() {
-		cfg, err := scanIndexerConfigRows(rows)
+		cfg, err := scanIndexerConfigRows(rows, key)
 		if err != nil {
 			return nil, err
 		}
@@ -107,21 +131,22 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanIndexerConfig(row *sql.Row) (IndexerConfig, error) {
-	return doScanIndexerConfig(row)
+func scanIndexerConfig(row *sql.Row, key []byte) (IndexerConfig, error) {
+	return doScanIndexerConfig(row, key)
 }
 
-func scanIndexerConfigRows(rows *sql.Rows) (IndexerConfig, error) {
-	return doScanIndexerConfig(rows)
+func scanIndexerConfigRows(rows *sql.Rows, key []byte) (IndexerConfig, error) {
+	return doScanIndexerConfig(rows, key)
 }
 
-func doScanIndexerConfig(s scanner) (IndexerConfig, error) {
+func doScanIndexerConfig(s scanner, key []byte) (IndexerConfig, error) {
 	var cfg IndexerConfig
 	var enabled int
 	var settingsJSON string
+	var settingsEnc []byte
 	var proxyURL sql.NullString
 
-	if err := s.Scan(&cfg.ID, &cfg.DefinitionID, &cfg.Protocol, &enabled, &settingsJSON, &proxyURL); err != nil {
+	if err := s.Scan(&cfg.ID, &cfg.DefinitionID, &cfg.Protocol, &enabled, &settingsJSON, &settingsEnc, &proxyURL); err != nil {
 		if err == sql.ErrNoRows {
 			return IndexerConfig{}, fmt.Errorf("indexer config not found")
 		}
@@ -130,7 +155,17 @@ func doScanIndexerConfig(s scanner) (IndexerConfig, error) {
 	cfg.Enabled = enabled != 0
 	cfg.ProxyURL = proxyURL.String
 	cfg.Settings = make(map[string]string)
-	_ = json.Unmarshal([]byte(settingsJSON), &cfg.Settings)
+
+	// Try encrypted settings first (if key provided and data exists)
+	if key != nil && len(settingsEnc) > 0 {
+		decrypted, err := crypt.Decrypt(settingsEnc, key)
+		if err != nil {
+			return IndexerConfig{}, fmt.Errorf("decrypting settings: %w", err)
+		}
+		_ = json.Unmarshal(decrypted, &cfg.Settings)
+	} else if settingsJSON != "" {
+		_ = json.Unmarshal([]byte(settingsJSON), &cfg.Settings)
+	}
 	return cfg, nil
 }
 
