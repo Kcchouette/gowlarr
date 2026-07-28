@@ -84,7 +84,7 @@ le plan).`,
 				Settings:     settingsMap,
 				ProxyURL:     proxyURL,
 			}
-			if err := st.SaveIndexerConfig(cfg); err != nil {
+			if err := st.SaveIndexerConfig(cfg, nil); err != nil {
 				return err
 			}
 			fmt.Printf("Indexeur %q ajouté (définition %q, protocole %s).\n", instanceID, definitionID, protocol)
@@ -121,7 +121,7 @@ func newIndexerListCmd() *cobra.Command {
 			}
 			defer st.Close()
 
-			configs, err := st.ListIndexerConfigs(false)
+			configs, err := st.ListIndexerConfigs(false, nil)
 			if err != nil {
 				return err
 			}
@@ -201,7 +201,7 @@ erreur réseau.`,
 			}
 			defer st.Close()
 
-			cfg, err := st.GetIndexerConfig(args[0])
+			cfg, err := st.GetIndexerConfig(args[0], nil)
 			if err != nil {
 				return err
 			}
@@ -220,7 +220,7 @@ erreur réseau.`,
 
 			client, err := httpclient.New(httpclient.Options{
 				IndexerID: cfg.ID,
-				Persister: st,
+				Persister: store.NewCookiePersisterAdapter(st, nil),
 				ProxyURL:  cfg.ProxyURL,
 			})
 			if err != nil {

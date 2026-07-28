@@ -100,7 +100,7 @@ d'indexeurs multiples arrive en Slice E).`,
 // chaque indexeur activé (`gowlarr indexer add`), avec session
 // authentifiée si la définition l'exige (Slice C/E).
 func buildConfiguredProviders(st *store.Store) ([]search.Provider, error) {
-	configs, err := st.ListIndexerConfigs(true)
+	configs, err := st.ListIndexerConfigs(true, nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing indexer configs: %w", err)
 	}
@@ -124,7 +124,7 @@ func buildConfiguredProviders(st *store.Store) ([]search.Provider, error) {
 
 		client, err := httpclient.New(httpclient.Options{
 			IndexerID: cfg.ID,
-			Persister: st,
+			Persister: store.NewCookiePersisterAdapter(st, nil),
 			ProxyURL:  cfg.ProxyURL,
 		})
 		if err != nil {
