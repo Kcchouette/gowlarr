@@ -14,6 +14,11 @@ import (
 type Query struct {
 	Keywords   string
 	Categories []int
+	SearchType string // "search" | "tvsearch" | "movie" | "music" | "book"
+	Season     int    // pour tvsearch
+	Episode    int    // pour tvsearch
+	IMDbID     string // pour movie/tvsearch
+	TMDBID     string // pour movie
 }
 
 // Provider est le contrat que doit implémenter tout moyen de recherche

@@ -2,6 +2,7 @@ package cardigannadapter
 
 import (
 	"context"
+	"strconv"
 
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	cardigannrelease "github.com/Kcchouette/cardigann-go/release"
@@ -28,10 +29,20 @@ func (p *Provider) Protocol() model.Protocol {
 }
 
 func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
-	releases, err := p.inner.Search(ctx, cardigannengine.Query{
+	query := cardigannengine.Query{
 		Keywords:   q.Keywords,
 		Categories: q.Categories,
-	})
+		IMDBID:     q.IMDbID,
+		TMDBID:     q.TMDBID,
+	}
+	if q.Season > 0 {
+		query.Season = strconv.Itoa(q.Season)
+	}
+	if q.Episode > 0 {
+		query.Ep = strconv.Itoa(q.Episode)
+	}
+
+	releases, err := p.inner.Search(ctx, query)
 	if err != nil {
 		return nil, err
 	}
