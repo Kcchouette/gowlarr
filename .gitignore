@@ -1,0 +1,61 @@
+# Binaires
+gowlarr
+gowlarr.exe
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Go coverage
+*.out
+*.prof
+cover.html
+coverage.txt
+
+# Go workspace (future-proofing)
+go.work
+go.work.sum
+
+# SQLite artifacts
+*.db
+*.db-wal
+*.db-shm
+
+# Environment files
+.env
+.env.*
+
+# Build output
+dist/
+build/
+
+# Temporary / logs
+tmp/
+*.log
+
+# Cache local gowlarr
+.cache/
+
+# Worktrees MiMoCode
+.worktrees/
+
+# MiMoCode
+.mimocode/
+
+# Vendored deps (if go mod vendor used)
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
