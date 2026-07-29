@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
 )
@@ -11,7 +12,7 @@ func printResults(results []model.ReleaseInfo, jsonOutput bool) {
 	if jsonOutput {
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
-			fmt.Println("erreur d'encodage JSON:", err)
+			slog.Error("erreur d'encodage JSON", "err", err)
 			return
 		}
 		fmt.Println(string(data))

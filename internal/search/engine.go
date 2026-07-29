@@ -22,7 +22,7 @@ type Engine struct {
 // NewEngine construit un moteur de recherche avec un timeout par défaut de 20s
 // par indexeur si aucun n'est spécifié.
 func NewEngine(providers []Provider) *Engine {
-	return &Engine{Providers: providers, PerProviderTTL: 20 * time.Second}
+	return &Engine{Providers: providers, PerProviderTTL: 20 * time.Second} // Valeur par défaut courte pour garder une recherche interactive réactive.
 }
 
 // ProviderError associe une erreur à l'indexeur qui l'a produite, pour que
@@ -49,6 +49,11 @@ func (e *Engine) Search(ctx context.Context, q Query) Result {
 	engineTimeout := e.PerProviderTTL * 2
 	ctx, cancel := context.WithTimeout(ctx, engineTimeout)
 	defer cancel()
+
+	// Cette marge "TTL * 2" n'est qu'un délai de grâce d'annulation coopératif
+	// pour les providers qui respectent leur contexte. Ce n'est pas une
+	// garantie de deadline dure : si un provider ignore son contexte, son
+	// goroutine peut encore bloquer wg.Wait() indéfiniment.
 
 	var (
 		mu     sync.Mutex

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -47,10 +46,12 @@ func NewClient(baseURL string) *Client {
 	return &Client{
 		BaseURL: baseURL,
 		HTTPClient: &http.Client{
-			Timeout: 90 * time.Second,
+			Timeout: 90 * time.Second, // FlareSolverr drives a headless browser and can legitimately take much longer.
 		},
 	}
 }
+
+const maxFlareSolverrResponseSize = 32 << 20
 
 func (c *Client) Get(ctx context.Context, req Request) (Response, error) {
 	if req.MaxTimeout == 0 {
@@ -83,7 +84,7 @@ func (c *Client) Get(ctx context.Context, req Request) (Response, error) {
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := readAllBounded(resp.Body, maxFlareSolverrResponseSize)
 	if err != nil {
 		return Response{}, fmt.Errorf("reading response: %w", err)
 	}

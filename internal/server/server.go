@@ -12,19 +12,21 @@ import (
 )
 
 type Server struct {
-	engine *search.Engine
-	store  *store.Store
-	apiKey string
-	addr   string
-	srv    *http.Server
+	engine     *search.Engine
+	store      *store.Store
+	apiKey     string
+	corsOrigin string
+	addr       string
+	srv        *http.Server
 }
 
-func New(addr, apiKey string, engine *search.Engine, st *store.Store) *Server {
+func New(addr, apiKey, corsOrigin string, engine *search.Engine, st *store.Store) *Server {
 	s := &Server{
-		engine: engine,
-		store:  st,
-		apiKey: apiKey,
-		addr:   addr,
+		engine:     engine,
+		store:      st,
+		apiKey:     apiKey,
+		corsOrigin: corsOrigin,
+		addr:       addr,
 	}
 
 	mux := http.NewServeMux()
@@ -32,10 +34,12 @@ func New(addr, apiKey string, engine *search.Engine, st *store.Store) *Server {
 	mux.HandleFunc("/", s.handleRoot)
 
 	s.srv = &http.Server{
-		Addr:         addr,
-		Handler:      mux,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		Addr:              addr,
+		Handler:           mux,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	return s
@@ -56,7 +60,16 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	s.applyCORS(w)
 	w.Header().Set("Content-Type", "text/plain")
 	fmt.Fprint(w, "Gowlarr Torznab/Newznab server\n")
 	fmt.Fprint(w, "Use /api?t=search&q=<query>&apikey=<key>\n")
+}
+
+func (s *Server) applyCORS(w http.ResponseWriter) {
+	if s.corsOrigin == "" {
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", s.corsOrigin)
+	w.Header().Set("Vary", "Origin")
 }

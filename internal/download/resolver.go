@@ -8,10 +8,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
-	"github.com/Kcchouette/cardigann-go/selector"
 	"github.com/Kcchouette/gowlarr/internal/model"
+	"github.com/Kcchouette/gowlarr/internal/netutil"
 )
 
 // Artifact représente le fichier obtenu après résolution d'un ReleaseInfo.
@@ -42,25 +43,22 @@ func NewResolverWithClient(client httpDoer, authHeaders map[string]string) *Reso
 	return &Resolver{HTTPClient: client, AuthHeaders: authHeaders}
 }
 
-// DownloadSelectorStep décrit une étape de résolution intermédiaire Cardigann
-// (`download.selectors`) : suivre une page HTML intermédiaire pour extraire
-// le lien réel de téléchargement avant de le récupérer.
-type DownloadSelectorStep struct {
-	Selector  string
-	Attribute string
-}
-
 // Resolve télécharge/résout le lien réel d'un ReleaseInfo :
 //   - lien magnet: renvoyé tel quel (pas de flux binaire à télécharger) ;
 //   - protocole usenet: récupération directe du flux .nzb ;
-//   - protocole torrent non-magnet: récupération directe du flux .torrent,
-//     après avoir suivi les éventuelles étapes intermédiaires (steps) si
-//     l'indexeur ne fournit pas de lien direct.
+//   - protocole torrent non-magnet: récupération directe du flux .torrent.
 //
 // Les indexeurs nécessitant une session authentifiée réutilisent le client
 // HTTP déjà connecté (r.HTTPClient, potentiellement un
 // httpclient.IndexerClient avec cookies persistés — cf. Slice C).
-func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo, steps ...DownloadSelectorStep) (Artifact, error) {
+//
+// Note : la résolution via une page intermédiaire (`download.selectors`
+// Cardigann) n'est pas supportée — la structure réelle de ce mécanisme
+// (Filters, Before/priming de session, Method, Infohash) est plus riche
+// qu'un simple sélecteur+attribut, et un branchement partiel romprait
+// silencieusement les indexeurs qui en dépendent réellement. Un support
+// complet serait un chantier séparé.
+func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo) (Artifact, error) {
 	if strings.HasPrefix(release.DownloadLink, "magnet:") {
 		return Artifact{
 			Filename: sanitizeFilename(release.Title) + ".magnet.txt",
@@ -69,23 +67,13 @@ func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo, steps
 		}, nil
 	}
 
-	link := release.DownloadLink
-	for _, step := range steps {
-		resolved, err := r.followIntermediatePage(ctx, link, step)
-		if err != nil {
-			return Artifact{}, fmt.Errorf("following download selector %q: %w", step.Selector, err)
-		}
-		link = resolved
-		if strings.HasPrefix(link, "magnet:") {
-			return Artifact{
-				Filename: sanitizeFilename(release.Title) + ".magnet.txt",
-				IsMagnet: true,
-				Content:  []byte(link),
-			}, nil
-		}
-	}
+	// trustedHost est dérivé du lien initial fourni par l'indexeur : les
+	// AuthHeaders (credentials indexeur) ne doivent jamais être envoyés vers
+	// un hôte différent, même si un redirect pointe ensuite vers un hôte
+	// tiers arbitraire (risque de fuite de credentials, cf. audit sécurité).
+	trustedHost := hostOf(release.DownloadLink)
 
-	body, err := r.fetch(ctx, link)
+	body, err := r.fetch(ctx, release.DownloadLink, trustedHost)
 	if err != nil {
 		return Artifact{}, fmt.Errorf("downloading release %q from %s: %w", release.Title, release.IndexerID, err)
 	}
@@ -101,42 +89,29 @@ func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo, steps
 	}, nil
 }
 
-// followIntermediatePage récupère link (page HTML intermédiaire) et en
-// extrait le lien réel via le sélecteur/attribut fourni.
-func (r *Resolver) followIntermediatePage(ctx context.Context, link string, step DownloadSelectorStep) (string, error) {
-	body, err := r.fetch(ctx, link)
-	if err != nil {
-		return "", err
+func (r *Resolver) fetch(ctx context.Context, link string, trustedHost string) ([]byte, error) {
+	// Best-effort pre-request SSRF check only: this does not protect against
+	// DNS rebinding at actual dial time, does not re-validate redirects, and
+	// cannot see through per-indexer HTTP/SOCKS proxies where the final
+	// destination is opaque to this check.
+	if err := netutil.ValidateURL(link); err != nil {
+		return nil, err
 	}
-	doc, err := selector.NewHTMLDocument(string(body))
-	if err != nil {
-		return "", fmt.Errorf("parsing intermediate page: %w", err)
-	}
-	nodes, err := doc.Find(step.Selector)
-	if err != nil || len(nodes) == 0 {
-		return "", fmt.Errorf("selector %q matched nothing on intermediate page", step.Selector)
-	}
-	attr := step.Attribute
-	if attr == "" {
-		attr = "href"
-	}
-	value, ok := nodes[0].Attr(attr)
-	if !ok {
-		return "", fmt.Errorf("attribute %q not found on selected node", attr)
-	}
-	return value, nil
-}
 
-func (r *Resolver) fetch(ctx context.Context, link string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building download request: %w", err)
 	}
 	req.Header.Set("User-Agent", "gowlarr/0.1 (+https://github.com/Kcchouette/gowlarr)")
 
-	// Add auth headers if provided
-	for header, value := range r.AuthHeaders {
-		req.Header.Set(header, value)
+	// Les AuthHeaders (credentials indexeur) ne sont attachés que si la
+	// requête cible bien l'hôte de confiance initial : une page
+	// intermédiaire ou un lien extrait par un sélecteur ne doit jamais
+	// pouvoir siphonner ces credentials vers un hôte tiers arbitraire.
+	if trustedHost != "" && hostOf(link) == trustedHost {
+		for header, value := range r.AuthHeaders {
+			req.Header.Set(header, value)
+		}
 	}
 
 	resp, err := r.HTTPClient.Do(req)
@@ -150,6 +125,16 @@ func (r *Resolver) fetch(ctx context.Context, link string) ([]byte, error) {
 	}
 
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 Mio max, garde-fou mémoire.
+}
+
+// hostOf renvoie l'hôte (sans port) de rawURL, ou une chaîne vide si
+// l'URL est invalide.
+func hostOf(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
 }
 
 func sanitizeFilename(name string) string {

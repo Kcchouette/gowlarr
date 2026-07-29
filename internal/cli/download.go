@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -23,8 +24,8 @@ selon le protocole détecté du résultat sélectionné — vous n'avez pas à
 préciser vous-même le protocole. L'ID provient d'un précédent "gowlarr search".`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var resultID int64
-			if _, err := fmt.Sscanf(args[0], "%d", &resultID); err != nil {
+			resultID, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
 				return fmt.Errorf("invalid result id %q: %w", args[0], err)
 			}
 

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -63,25 +64,36 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 
 	cfg, err := s.store.GetIndexerConfig(indexerID, nil)
 	if err != nil {
+		slog.Warn("téléchargement: chargement config indexeur, fallback client par défaut", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
 	}
 
 	raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
 	if err != nil {
+		slog.Warn("téléchargement: chargement définition indexeur, fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
 		return defaultClient, nil
 	}
 
 	def, err := definition.Parse([]byte(raw))
 	if err != nil {
+		slog.Warn("téléchargement: parsing définition indexeur, fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
+		return defaultClient, nil
+	}
+
+	if len(def.Links) == 0 {
+		// Définition Cardigann malformée/incomplète : pas de lien de base
+		// disponible, on ne peut pas construire de provider authentifié.
+		slog.Warn("téléchargement: definition sans links[], fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID)
 		return defaultClient, nil
 	}
 
 	client, err := httpclient.New(httpclient.Options{
 		IndexerID: cfg.ID,
 		Persister: store.NewCookiePersisterAdapter(s.store, nil),
-		ProxyURL:  cfg.ProxyURL,
+		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, s.cfg),
 	})
 	if err != nil {
+		slog.Warn("téléchargement: construction client HTTP indexeur, fallback client par défaut", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
 	}
 

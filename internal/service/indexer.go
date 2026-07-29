@@ -79,7 +79,17 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 		return err
 	}
 
-	provider, err := BuildIndexerProvider(s.store, cfg)
+	var raw string
+	if version != "" {
+		raw, err = s.store.GetDefinitionYAML(cfg.DefinitionID, version)
+	} else {
+		raw, _, err = s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
+	}
+	if err != nil {
+		return fmt.Errorf("loading definition: %w", err)
+	}
+
+	provider, err := buildIndexerProviderFromRaw(s.store, s.cfg, cfg, raw)
 	if err != nil {
 		return err
 	}

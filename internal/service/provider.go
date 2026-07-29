@@ -53,7 +53,7 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 		client, err := httpclient.New(httpclient.Options{
 			IndexerID: idxCfg.ID,
 			Persister: store.NewCookiePersisterAdapter(st, nil),
-			ProxyURL:  idxCfg.ProxyURL,
+			ProxyURL:  effectiveProxyURL(idxCfg.ProxyURL, cfg),
 		})
 		if err != nil {
 			slog.Warn("indexeur: construction http client", "id", idxCfg.ID, "err", err)
@@ -76,11 +76,15 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 }
 
 // BuildIndexerProvider construit un provider Cardigann pour un indexeur spécifique (test).
-func BuildIndexerProvider(st *store.Store, cfg store.IndexerConfig) (search.Provider, error) {
+func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
 	raw, _, err := st.GetDefinitionYAMLFallback(cfg.DefinitionID)
 	if err != nil {
 		return nil, fmt.Errorf("loading definition: %w", err)
 	}
+	return buildIndexerProviderFromRaw(st, appCfg, cfg, raw)
+}
+
+func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, raw string) (search.Provider, error) {
 	def, err := definition.Parse([]byte(raw))
 	if err != nil {
 		return nil, fmt.Errorf("parsing definition: %w", err)
@@ -92,7 +96,7 @@ func BuildIndexerProvider(st *store.Store, cfg store.IndexerConfig) (search.Prov
 	client, err := httpclient.New(httpclient.Options{
 		IndexerID: cfg.ID,
 		Persister: store.NewCookiePersisterAdapter(st, nil),
-		ProxyURL:  cfg.ProxyURL,
+		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, appCfg),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("building http client: %w", err)

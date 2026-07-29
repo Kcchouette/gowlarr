@@ -1,36 +1,34 @@
 package apibay
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
-func withFixtureServer(t *testing.T, body string) *httptest.Server {
+func withFixtureServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 	t.Helper()
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(body))
-	}))
+	server := httptest.NewServer(handler)
 	t.Cleanup(server.Close)
-
-	original := baseURL
-	baseURL = server.URL
-	t.Cleanup(func() { baseURL = original })
-
 	return server
 }
 
 func TestProvider_Search_ParsesResults(t *testing.T) {
-	withFixtureServer(t, `[
+	server := withFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[
 		{"id":"1","name":"Ubuntu.24.04.ISO","info_hash":"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
 		 "leechers":"3","seeders":"42","num_files":"1","size":"1073741824","added":"1700000000","category":"300"}
-	]`)
+	]`))
+	})
 
 	p := New()
+	p.BaseURL = server.URL
 	releases, err := p.Search(context.Background(), search.Query{Keywords: "ubuntu"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -57,9 +55,13 @@ func TestProvider_Search_ParsesResults(t *testing.T) {
 }
 
 func TestProvider_Search_FiltersNoResultsSentinel(t *testing.T) {
-	withFixtureServer(t, `[{"id":"0","name":"No results returned","info_hash":"0000000000000000000000000000000000000000"}]`)
+	server := withFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`[{"id":"0","name":"No results returned","info_hash":"0000000000000000000000000000000000000000"}]`))
+	})
 
 	p := New()
+	p.BaseURL = server.URL
 	releases, err := p.Search(context.Background(), search.Query{Keywords: "zzznotfoundzzz"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -78,16 +80,31 @@ func TestProvider_Search_RejectsEmptyKeywords(t *testing.T) {
 }
 
 func TestProvider_Search_HTTPError(t *testing.T) {
-	withFixtureServer(t, "")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := withFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
-	}))
-	defer server.Close()
-	baseURL = server.URL
+	})
 
 	p := New()
+	p.BaseURL = server.URL
 	_, err := p.Search(context.Background(), search.Query{Keywords: "test"})
 	if err == nil {
 		t.Fatal("expected error on HTTP 403")
+	}
+}
+
+func TestProvider_Search_ResponseTooLarge(t *testing.T) {
+	server := withFixtureServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(bytes.Repeat([]byte("x"), maxAPIBayResponseSize+1))
+	})
+
+	p := New()
+	p.BaseURL = server.URL
+	_, err := p.Search(context.Background(), search.Query{Keywords: "test"})
+	if err == nil {
+		t.Fatal("expected oversized response error")
+	}
+	if !strings.Contains(err.Error(), "response body too large") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

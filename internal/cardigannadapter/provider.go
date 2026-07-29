@@ -2,6 +2,7 @@ package cardigannadapter
 
 import (
 	"context"
+	"log/slog"
 	"strconv"
 
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
@@ -22,10 +23,7 @@ func (p *Provider) ID() string   { return p.inner.ID() }
 func (p *Provider) Name() string { return p.inner.Name() }
 
 func (p *Provider) Protocol() model.Protocol {
-	if p.inner.Protocol() == cardigannrelease.ProtocolUsenet {
-		return model.ProtocolUsenet
-	}
-	return model.ProtocolTorrent
+	return toModelProtocol(p.inner.Protocol(), p.inner.ID(), p.inner.Name())
 }
 
 func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
@@ -58,11 +56,6 @@ func ToReleaseInfos(releases []cardigannrelease.Release) []model.ReleaseInfo {
 }
 
 func ToReleaseInfo(r cardigannrelease.Release) model.ReleaseInfo {
-	protocol := model.ProtocolTorrent
-	if r.Protocol == cardigannrelease.ProtocolUsenet {
-		protocol = model.ProtocolUsenet
-	}
-
 	return model.ReleaseInfo{
 		Title:        r.Title,
 		Details:      r.Details,
@@ -74,8 +67,20 @@ func ToReleaseInfo(r cardigannrelease.Release) model.ReleaseInfo {
 		Peers:        r.Peers,
 		Grabs:        r.Grabs,
 		Categories:   append([]int(nil), r.Categories...),
-		Protocol:     protocol,
+		Protocol:     toModelProtocol(r.Protocol, r.IndexerID, r.IndexerName),
 		IndexerID:    r.IndexerID,
 		IndexerName:  r.IndexerName,
+	}
+}
+
+func toModelProtocol(protocol cardigannrelease.Protocol, indexerID, indexerName string) model.Protocol {
+	switch protocol {
+	case cardigannrelease.ProtocolUsenet:
+		return model.ProtocolUsenet
+	case cardigannrelease.ProtocolTorrent:
+		return model.ProtocolTorrent
+	default:
+		slog.Warn("unknown cardigann protocol, falling back to torrent", "protocol", string(protocol), "indexer_id", indexerID, "indexer_name", indexerName)
+		return model.ProtocolTorrent
 	}
 }

@@ -45,8 +45,11 @@ func NewSearchService(st *store.Store, cfg config.Config) *SearchService {
 
 // Search exécute une recherche sur tous les indexeurs actifs.
 func (s *SearchService) Search(ctx context.Context, params SearchParams) (SearchResult, error) {
+	purgeStart := time.Now()
 	if err := s.store.PurgeExpiredResults(); err != nil {
-		slog.Warn("échec purge résultats expirés", "err", err)
+		slog.Warn("échec purge résultats expirés", "duration", time.Since(purgeStart), "err", err)
+	} else {
+		slog.Debug("purge expired results", "duration", time.Since(purgeStart))
 	}
 
 	providers := []search.Provider{apibay.New()}

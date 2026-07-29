@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -34,7 +35,7 @@ func (s *Store) GetDefinitionYAML(id, version string) (string, error) {
 	var raw string
 	err := s.db.QueryRow(`SELECT raw_yaml FROM indexer_definitions WHERE id = ? AND version = ?`, id, version).Scan(&raw)
 	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("definition %q (version %s) not found in cache; run `gowlarr defs sync` first", id, version)
+		return "", fmt.Errorf("%w: definition %q (version %s) not found in cache; run `gowlarr defs sync` first", ErrDefinitionNotFound, id, version)
 	}
 	if err != nil {
 		return "", fmt.Errorf("reading definition %s/%s: %w", version, id, err)
@@ -85,6 +86,9 @@ func (s *Store) GetDefinitionYAMLFallback(id string) (rawYAML, version string, e
 		if err == nil {
 			return raw, v, nil
 		}
+		if !errors.Is(err, ErrDefinitionNotFound) {
+			return "", "", err
+		}
 	}
-	return "", "", fmt.Errorf("definition %q not found in any version", id)
+	return "", "", fmt.Errorf("%w: definition %q not found in any version", ErrDefinitionNotFound, id)
 }

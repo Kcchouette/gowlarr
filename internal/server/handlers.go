@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/xml"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -30,14 +31,23 @@ func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) {
 	q := r.URL.Query()
 
+	keywords := strings.TrimSpace(q.Get("q"))
+	if keywords == "" {
+		http.Error(w, "missing required parameter: q", http.StatusBadRequest)
+		return
+	}
+
 	query := search.Query{
-		Keywords:   q.Get("q"),
+		Keywords:   keywords,
 		SearchType: t,
 	}
 
 	if catStr := q.Get("cat"); catStr != "" {
 		for _, c := range strings.Split(catStr, ",") {
 			if id, err := strconv.Atoi(strings.TrimSpace(c)); err == nil {
+				// Compatibilité volontaire avec des clients *arr permissifs : les
+				// catégories invalides sont ignorées silencieusement au lieu de
+				// faire échouer toute la requête.
 				query.Categories = append(query.Categories, id)
 			}
 		}
@@ -45,6 +55,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 
 	if seasonStr := q.Get("season"); seasonStr != "" {
 		if season, err := strconv.Atoi(seasonStr); err == nil {
+			// Même logique de compatibilité permissive pour season/ep : on ignore
+			// les valeurs non parseables au lieu de renvoyer 400.
 			query.Season = season
 		}
 	}
@@ -65,7 +77,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
 	if err := WriteTorznabResponse(w, result.Releases, "gowlarr"); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		// Le flux de réponse a déjà été partiellement écrit (en-têtes +
+		// prologue XML) : on ne peut plus émettre un code d'erreur HTTP
+		// propre ni renvoyer err.Error() au client (fuite de détails
+		// internes). On se contente de logguer côté serveur.
+		slog.Error("écriture réponse torznab", "err", err)
 	}
 }
 

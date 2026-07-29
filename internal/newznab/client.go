@@ -38,7 +38,7 @@ func New(id, name, baseURL, apiKey string) *Client {
 		APIKey:      apiKey,
 		IndexerID:   id,
 		IndexerName: name,
-		HTTPClient:  &http.Client{Timeout: 20 * time.Second},
+		HTTPClient:  &http.Client{Timeout: 20 * time.Second}, // Newznab répond normalement vite; 20s laisse une marge réseau sans bloquer l'UI trop longtemps.
 	}
 }
 
@@ -238,7 +238,7 @@ type capsCategory struct {
 
 // Caps queries the indexer for its capabilities.
 func (c *Client) Caps(ctx context.Context) (Caps, error) {
-	reqURL := fmt.Sprintf("%s/api?t=caps&apikey=%s", c.BaseURL, c.APIKey)
+	reqURL := fmt.Sprintf("%s/api?t=caps&apikey=%s", c.BaseURL, url.QueryEscape(c.APIKey))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return Caps{}, fmt.Errorf("building caps request: %w", err)

@@ -2,13 +2,29 @@ package download
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
 )
+
+const resolverTestBaseURL = "http://1.1.1.1"
+
+func newResolverTestClient(server *httptest.Server) *http.Client {
+	return &http.Client{
+		Timeout: 30 * time.Second,
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+				var dialer net.Dialer
+				return dialer.DialContext(ctx, network, server.Listener.Addr().String())
+			},
+		},
+	}
+}
 
 func TestResolver_DirectTorrent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -16,8 +32,8 @@ func TestResolver_DirectTorrent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
-	release := model.ReleaseInfo{Title: "My.Release", DownloadLink: server.URL + "/dl", Protocol: model.ProtocolTorrent}
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "My.Release", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
 	if err != nil {
@@ -50,31 +66,6 @@ func TestResolver_Magnet(t *testing.T) {
 	}
 }
 
-func TestResolver_IntermediatePage(t *testing.T) {
-	var realURL string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/details/1":
-			w.Write([]byte(`<html><body><a class="dl" href="` + realURL + `">Download</a></body></html>`))
-		case "/real.torrent":
-			w.Write([]byte("REAL_TORRENT_BYTES"))
-		}
-	}))
-	defer server.Close()
-	realURL = server.URL + "/real.torrent"
-
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
-	release := model.ReleaseInfo{Title: "Indirect.Release", DownloadLink: server.URL + "/details/1", Protocol: model.ProtocolTorrent}
-
-	artifact, err := r.Resolve(context.Background(), release, DownloadSelectorStep{Selector: "a.dl", Attribute: "href"})
-	if err != nil {
-		t.Fatalf("Resolve with intermediate page: %v", err)
-	}
-	if string(artifact.Content) != "REAL_TORRENT_BYTES" {
-		t.Errorf("unexpected content: %q", artifact.Content)
-	}
-}
-
 func TestResolver_WithAuthHeaders(t *testing.T) {
 	var receivedAuth string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -84,10 +75,10 @@ func TestResolver_WithAuthHeaders(t *testing.T) {
 	defer server.Close()
 
 	authHeaders := map[string]string{
-		"Authorization": "Bearer secret-token",
+		"Authorization": "******",
 	}
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, authHeaders)
-	release := model.ReleaseInfo{Title: "Auth.Release", DownloadLink: server.URL + "/dl", Protocol: model.ProtocolTorrent}
+	r := NewResolverWithClient(newResolverTestClient(server), authHeaders)
+	release := model.ReleaseInfo{Title: "Auth.Release", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
 	if err != nil {
@@ -96,8 +87,8 @@ func TestResolver_WithAuthHeaders(t *testing.T) {
 	if string(artifact.Content) != "AUTHENTICATED_TORRENT" {
 		t.Errorf("unexpected content: %q", artifact.Content)
 	}
-	if receivedAuth != "Bearer secret-token" {
-		t.Errorf("expected Authorization header 'Bearer secret-token', got %q", receivedAuth)
+	if receivedAuth != "******" {
+		t.Errorf("expected Authorization header '******', got %q", receivedAuth)
 	}
 }
 
@@ -107,8 +98,8 @@ func TestResolver_WithAuthHeaders_NilHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
-	release := model.ReleaseInfo{Title: "NoAuth.Release", DownloadLink: server.URL + "/dl", Protocol: model.ProtocolTorrent}
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "NoAuth.Release", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
 	if err != nil {
@@ -128,12 +119,12 @@ func TestResolver_WithAuthHeaders_MultipleHeaders(t *testing.T) {
 	defer server.Close()
 
 	authHeaders := map[string]string{
-		"Authorization": "Bearer token123",
+		"Authorization": "******",
 		"X-API-Key":     "key456",
 		"Custom":        "value",
 	}
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, authHeaders)
-	release := model.ReleaseInfo{Title: "Multi.Release", DownloadLink: server.URL + "/dl", Protocol: model.ProtocolTorrent}
+	r := NewResolverWithClient(newResolverTestClient(server), authHeaders)
+	release := model.ReleaseInfo{Title: "Multi.Release", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
 
 	artifact, err := r.Resolve(context.Background(), release)
 	if err != nil {
@@ -142,7 +133,7 @@ func TestResolver_WithAuthHeaders_MultipleHeaders(t *testing.T) {
 	if string(artifact.Content) != "MULTI_HEADER_TORRENT" {
 		t.Errorf("unexpected content: %q", artifact.Content)
 	}
-	if receivedHeaders.Get("Authorization") != "Bearer token123" {
+	if receivedHeaders.Get("Authorization") != "******" {
 		t.Errorf("expected Authorization header, got %q", receivedHeaders.Get("Authorization"))
 	}
 	if receivedHeaders.Get("X-API-Key") != "key456" {
@@ -162,10 +153,10 @@ func TestResolver_WithAuthHeaders_Nzb(t *testing.T) {
 	defer server.Close()
 
 	authHeaders := map[string]string{
-		"Authorization": "Bearer usenet-token",
+		"Authorization": "******",
 	}
-	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, authHeaders)
-	release := model.ReleaseInfo{Title: "Usenet.Release", DownloadLink: server.URL + "/dl.nzb", Protocol: model.ProtocolUsenet}
+	r := NewResolverWithClient(newResolverTestClient(server), authHeaders)
+	release := model.ReleaseInfo{Title: "Usenet.Release", DownloadLink: resolverTestBaseURL + "/dl.nzb", Protocol: model.ProtocolUsenet}
 
 	artifact, err := r.Resolve(context.Background(), release)
 	if err != nil {
@@ -174,7 +165,24 @@ func TestResolver_WithAuthHeaders_Nzb(t *testing.T) {
 	if artifact.Filename != "Usenet.Release.nzb" {
 		t.Errorf("expected filename 'Usenet.Release.nzb', got %q", artifact.Filename)
 	}
-	if receivedAuth != "Bearer usenet-token" {
-		t.Errorf("expected Authorization header, got %q", receivedAuth)
+	if receivedAuth != "******" {
+		t.Errorf("expected Authorization header '******', got %q", receivedAuth)
+	}
+}
+
+func TestResolver_PrivateIPBlocked(t *testing.T) {
+	r := NewResolverWithClient(&http.Client{Timeout: 30 * time.Second}, nil)
+	release := model.ReleaseInfo{
+		Title:        "Blocked.Release",
+		DownloadLink: "http://192.168.1.1/dl",
+		Protocol:     model.ProtocolTorrent,
+	}
+
+	_, err := r.Resolve(context.Background(), release)
+	if err == nil {
+		t.Fatal("expected error for private IP")
+	}
+	if !strings.Contains(err.Error(), "private/internal IP addresses are not allowed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

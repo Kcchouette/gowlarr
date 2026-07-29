@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -170,8 +171,8 @@ func newIndexerTestCmd() *cobra.Command {
 
 			svc := service.NewIndexerService(st, cfg)
 			if err := svc.Test(cmd.Context(), args[0], version); err != nil {
-				fmt.Printf("❌ %s : %v\n", args[0], err)
-				return nil
+				slog.Error("test indexeur échoué", "id", args[0], "err", err)
+				return err
 			}
 			fmt.Printf("✅ %s : OK (connexion + parsing fonctionnels)\n", args[0])
 			return nil

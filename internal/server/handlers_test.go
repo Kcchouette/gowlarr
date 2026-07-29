@@ -27,7 +27,7 @@ func (f *fakeProvider) Search(_ context.Context, _ search.Query) ([]model.Releas
 
 func TestHandleCaps(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "test-key", engine, nil)
+	srv := New(":0", "test-key", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=caps&apikey=test-key", nil)
 	w := httptest.NewRecorder()
@@ -48,7 +48,7 @@ func TestHandleCaps(t *testing.T) {
 
 func TestHandlePing(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "test-key", engine, nil)
+	srv := New(":0", "test-key", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=serverping&apikey=test-key", nil)
 	w := httptest.NewRecorder()
@@ -77,7 +77,7 @@ func TestHandleSearch(t *testing.T) {
 		},
 	}
 	engine := search.NewEngine([]search.Provider{provider})
-	srv := New(":0", "test-key", engine, nil)
+	srv := New(":0", "test-key", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=search&q=test&apikey=test-key", nil)
 	w := httptest.NewRecorder()
@@ -102,7 +102,7 @@ func TestHandleSearchWithCategories(t *testing.T) {
 		releases: []model.ReleaseInfo{},
 	}
 	engine := search.NewEngine([]search.Provider{provider})
-	srv := New(":0", "test-key", engine, nil)
+	srv := New(":0", "test-key", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=search&q=test&cat=2000,3000&apikey=test-key", nil)
 	w := httptest.NewRecorder()
@@ -116,7 +116,7 @@ func TestHandleSearchWithCategories(t *testing.T) {
 
 func TestHandleSearchUnsupportedType(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "test-key", engine, nil)
+	srv := New(":0", "test-key", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=unsupported&apikey=test-key", nil)
 	w := httptest.NewRecorder()
@@ -130,7 +130,7 @@ func TestHandleSearchUnsupportedType(t *testing.T) {
 
 func TestRequireAPIKey(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "my-secret-key", engine, nil)
+	srv := New(":0", "my-secret-key", "", engine, nil)
 
 	// Use httptest.Server with the server's handler
 	ts := httptest.NewServer(srv.srv.Handler)
@@ -169,7 +169,7 @@ func TestRequireAPIKey(t *testing.T) {
 
 func TestRequireAPIKeyEmpty(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "", engine, nil)
+	srv := New(":0", "", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api?t=caps", nil)
 	w := httptest.NewRecorder()
@@ -220,7 +220,7 @@ func TestWriteTorznabResponseEmpty(t *testing.T) {
 
 func TestHandleRoot(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "", engine, nil)
+	srv := New(":0", "", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	w := httptest.NewRecorder()
@@ -236,7 +236,7 @@ func TestHandleRoot(t *testing.T) {
 
 func TestHandleRootNotFound(t *testing.T) {
 	engine := search.NewEngine(nil)
-	srv := New(":0", "", engine, nil)
+	srv := New(":0", "", "", engine, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/unknown", nil)
 	w := httptest.NewRecorder()
@@ -244,5 +244,19 @@ func TestHandleRootNotFound(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", w.Code)
+	}
+}
+
+func TestHandleSearchMissingQuery(t *testing.T) {
+	engine := search.NewEngine(nil)
+	srv := New(":0", "test-key", "", engine, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api?t=search&apikey=test-key", nil)
+	w := httptest.NewRecorder()
+
+	srv.handleSearch(w, req, "search")
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for missing query, got %d", w.Code)
 	}
 }

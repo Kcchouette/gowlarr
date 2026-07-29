@@ -24,6 +24,11 @@ type IndexerConfig struct {
 // SaveIndexerConfig upsert une configuration d'indexeur.
 // Si key est non nil, les settings sont chiffrés en BLOB (settings_enc).
 // Sinon, ils restent en clair en TEXT (settings_json) pour rétrocompatibilité.
+//
+// Note: dans l'état actuel de Gowlarr, les appels passent toujours key=nil :
+// settings_json (y compris d'éventuels identifiants d'indexeur) est donc
+// stocké en clair dans SQLite. L'infrastructure de chiffrement existe dans
+// internal/crypt mais n'est pas branchée par défaut.
 func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 	settingsJSON, err := json.Marshal(cfg.Settings)
 	if err != nil {
@@ -68,6 +73,10 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 }
 
 // GetIndexerConfig récupère une configuration d'indexeur par son ID.
+//
+// Note: tant que key reste nil côté appelant (cas actuel partout dans le
+// projet), les settings sont relus depuis settings_json en clair ; ne pas
+// supposer qu'un chiffrement actif protège déjà les credentials.
 func (s *Store) GetIndexerConfig(id string, key []byte) (IndexerConfig, error) {
 	row := s.db.QueryRow(`SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url
 		FROM indexer_configs WHERE id = ?`, id)
@@ -111,7 +120,7 @@ func (s *Store) DeleteIndexerConfig(id string) error {
 		return fmt.Errorf("checking delete result: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("no indexer config with id %q", id)
+		return fmt.Errorf("%w: no indexer config with id %q", ErrIndexerConfigNotFound, id)
 	}
 	return nil
 }
@@ -128,7 +137,7 @@ func (s *Store) SetIndexerEnabled(id string, enabled bool) error {
 		return fmt.Errorf("checking update result: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("no indexer config with id %q", id)
+		return fmt.Errorf("%w: no indexer config with id %q", ErrIndexerConfigNotFound, id)
 	}
 	return nil
 }
@@ -154,7 +163,7 @@ func doScanIndexerConfig(s scanner, key []byte) (IndexerConfig, error) {
 
 	if err := s.Scan(&cfg.ID, &cfg.DefinitionID, &cfg.Protocol, &enabled, &settingsJSON, &settingsEnc, &proxyURL); err != nil {
 		if err == sql.ErrNoRows {
-			return IndexerConfig{}, fmt.Errorf("indexer config not found")
+			return IndexerConfig{}, fmt.Errorf("%w: indexer config not found", ErrIndexerConfigNotFound)
 		}
 		return IndexerConfig{}, fmt.Errorf("scanning indexer config: %w", err)
 	}

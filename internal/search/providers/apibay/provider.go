@@ -20,18 +20,23 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// baseURL est une variable (pas une constante) pour permettre aux tests de
-// pointer vers un serveur httptest local plutôt que vers le vrai apibay.org.
-var baseURL = "https://apibay.org/q.php"
+const (
+	defaultBaseURL        = "https://apibay.org/q.php"
+	maxAPIBayResponseSize = 32 << 20
+)
 
 // Provider interroge apibay.org (protocole torrent, indexeur public, sans login).
 type Provider struct {
 	HTTPClient *http.Client
+	BaseURL    string
 }
 
 // New construit un provider apibay avec un client HTTP par défaut si aucun n'est fourni.
 func New() *Provider {
-	return &Provider{HTTPClient: &http.Client{Timeout: 15 * time.Second}}
+	return &Provider{
+		HTTPClient: &http.Client{Timeout: 15 * time.Second}, // API JSON publique simple, timeout court pour rester réactif.
+		BaseURL:    defaultBaseURL,
+	}
 }
 
 func (p *Provider) ID() string               { return "apibay" }
@@ -59,7 +64,7 @@ func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseI
 		return nil, fmt.Errorf("apibay requires non-empty keywords (no browse-all support)")
 	}
 
-	reqURL := fmt.Sprintf("%s?q=%s", baseURL, url.QueryEscape(q.Keywords))
+	reqURL := fmt.Sprintf("%s?q=%s", p.BaseURL, url.QueryEscape(q.Keywords))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building apibay request: %w", err)
@@ -76,7 +81,7 @@ func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseI
 		return nil, fmt.Errorf("apibay returned HTTP %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readAllBounded(resp.Body, maxAPIBayResponseSize)
 	if err != nil {
 		return nil, fmt.Errorf("reading apibay response: %w", err)
 	}
@@ -118,4 +123,15 @@ func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseI
 	}
 
 	return releases, nil
+}
+
+func readAllBounded(r io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("response body too large (max %d bytes)", limit)
+	}
+	return body, nil
 }

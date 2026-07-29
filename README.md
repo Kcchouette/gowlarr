@@ -120,6 +120,15 @@ internal/cardigannadapter/  Adaptateur vers cardigann-go
 - [cobra](https://github.com/spf13/cobra) — Framework CLI
 - [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — SQLite pur Go (sans cgo)
 
+## Sécurité
+
+> [!IMPORTANT]
+> Les paramètres d'indexeur persistés en base SQLite (`settings_json`,
+> y compris d'éventuels identifiants/mots de passe) sont actuellement stockés
+> **en clair**. L'infrastructure de chiffrement existe bien dans `internal/crypt`,
+> mais elle n'est pas encore branchée dans le flux normal d'exécution
+> (la clé de chiffrement reste `nil`).
+
 ## Licence
 
 MIT — voir [LICENSE](LICENSE). La licence ne s'applique qu'au code de Gowlarr lui-même,

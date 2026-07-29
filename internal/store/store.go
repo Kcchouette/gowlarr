@@ -41,6 +41,11 @@ func Open(path string) (*Store, error) {
 	}
 	db.SetMaxOpenConns(1) // SQLite + writer unique : évite les erreurs "database is locked" en CLI.
 
+	if err := db.Ping(); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("pinging sqlite database %s: %w", path, err)
+	}
+
 	s := &Store{db: db}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
@@ -99,6 +104,9 @@ func (s *Store) migrate() error {
 		if err != nil {
 			return fmt.Errorf("beginning transaction for migration %s: %w", name, err)
 		}
+		// Migration files may intentionally contain multiple SQL statements; the
+		// modernc.org/sqlite driver supports executing them together within the
+		// same transaction, which is the expected convention here.
 		if _, err := tx.Exec(string(content)); err != nil {
 			_ = tx.Rollback()
 			return fmt.Errorf("applying migration %s: %w", name, err)
