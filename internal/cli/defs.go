@@ -11,11 +11,10 @@ import (
 func newDefsCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "defs",
-		Short: "Gérer le cache local des définitions Cardigann (Prowlarr/Indexers)",
-		Long: `Synchronise et consulte les définitions Cardigann. Les fichiers YAML ne
-sont JAMAIS redistribués avec Gowlarr : ils sont téléchargés à la demande
-depuis le dépôt GitHub Prowlarr/Indexers (licence non spécifiée par
-l'auteur amont) et mis en cache localement uniquement pour votre usage.`,
+		Short: "Manage local Cardigann definition cache (Prowlarr/Indexers)",
+		Long: `Synchronize and browse Cardigann definitions. YAML files are NEVER
+redistributed with Gowlarr: they are fetched on demand from the
+Prowlarr/Indexers GitHub repo and cached locally for your use only.`,
 	}
 	cmd.AddCommand(newDefsSyncCmd())
 	cmd.AddCommand(newDefsListCmd())
@@ -27,7 +26,7 @@ func newDefsSyncCmd() *cobra.Command {
 	var version string
 	cmd := &cobra.Command{
 		Use:   "sync",
-		Short: "Télécharger/mettre à jour les définitions Cardigann depuis GitHub",
+		Short: "Download/update Cardigann definitions from GitHub",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, _, err := openStore()
 			if err != nil {
@@ -38,7 +37,7 @@ func newDefsSyncCmd() *cobra.Command {
 			fetcher := defs.NewFetcher()
 			raws, err := fetcher.FetchVersion(cmd.Context(), version)
 			if err != nil {
-				return fmt.Errorf("synchronisation des définitions %s: %w", version, err)
+				return fmt.Errorf("synchronizing definitions %s: %w", version, err)
 			}
 
 			for _, raw := range raws {
@@ -46,11 +45,11 @@ func newDefsSyncCmd() *cobra.Command {
 					return err
 				}
 			}
-			fmt.Printf("%d définition(s) %s synchronisée(s).\n", len(raws), version)
+			fmt.Printf("%d definition(s) %s synchronized.\n", len(raws), version)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Version du schéma Cardigann à synchroniser")
+	cmd.Flags().StringVar(&version, "version", "v11", "Cardigann schema version to synchronize")
 	return cmd
 }
 
@@ -58,7 +57,7 @@ func newDefsListCmd() *cobra.Command {
 	var version string
 	cmd := &cobra.Command{
 		Use:   "list",
-		Short: "Lister les définitions Cardigann en cache local",
+		Short: "List Cardigann definitions in local cache",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, _, err := openStore()
 			if err != nil {
@@ -71,7 +70,7 @@ func newDefsListCmd() *cobra.Command {
 				return err
 			}
 			if len(metas) == 0 {
-				fmt.Println("Aucune définition en cache. Lancez `gowlarr defs sync` d'abord.")
+				fmt.Println("No definitions in cache. Run `gowlarr defs sync` first.")
 				return nil
 			}
 			for _, m := range metas {
@@ -80,7 +79,7 @@ func newDefsListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Filtrer par version (vide = toutes)")
+	cmd.Flags().StringVar(&version, "version", "v11", "Filter by version (empty = all)")
 	return cmd
 }
 
@@ -88,7 +87,7 @@ func newDefsShowCmd() *cobra.Command {
 	var version string
 	cmd := &cobra.Command{
 		Use:   "show <definition-id>",
-		Short: "Afficher une définition Cardigann en cache (résumé)",
+		Short: "Show a Cardigann definition in cache (summary)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, _, err := openStore()
@@ -113,13 +112,13 @@ func newDefsShowCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Version du schéma")
+	cmd.Flags().StringVar(&version, "version", "v11", "Schema version")
 	return cmd
 }
 
 func methodOrNone(method string) string {
 	if method == "" {
-		return "(aucun)"
+		return "(none)"
 	}
 	return method
 }

@@ -12,19 +12,19 @@ func printResults(results []model.ReleaseInfo, jsonOutput bool) {
 	if jsonOutput {
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
-			slog.Error("erreur d'encodage JSON", "err", err)
+			slog.Error("JSON encoding error", "err", err)
 			return
 		}
 		fmt.Println(string(data))
 		return
 	}
 
-	fmt.Printf("%-4s %-8s %-8s %-6s %-10s %s\n", "ID", "PROTO", "SEEDS", "TAILLE", "INDEXEUR", "TITRE")
+	fmt.Printf("%-4s %-8s %-8s %-6s %-10s %s\n", "ID", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE")
 	for _, r := range results {
 		fmt.Printf("%-4d %-8s %-8d %-10s %-10s %s\n",
 			r.ID, r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title)
 	}
-	fmt.Printf("\n%d résultat(s). Utilisez `gowlarr download <ID>` pour récupérer un fichier.\n", len(results))
+	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file.\n", len(results))
 }
 
 func humanSize(bytes int64) string {

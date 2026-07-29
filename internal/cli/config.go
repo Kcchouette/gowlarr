@@ -11,7 +11,7 @@ import (
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Gérer la configuration de Gowlarr",
+		Short: "Manage Gowlarr configuration",
 	}
 	cmd.AddCommand(newConfigInitCmd())
 	cmd.AddCommand(newConfigShowCmd())
@@ -21,7 +21,7 @@ func newConfigCmd() *cobra.Command {
 func newConfigInitCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "init",
-		Short: "Créer la configuration par défaut et la base de données",
+		Short: "Create default configuration and database",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Default()
 			if err != nil {
@@ -38,8 +38,8 @@ func newConfigInitCmd() *cobra.Command {
 			defer st.Close()
 
 			path, _ := config.Path()
-			fmt.Printf("Configuration initialisée : %s\n", path)
-			fmt.Printf("Base de données : %s\n", cfg.DatabasePath)
+			fmt.Printf("Configuration initialized: %s\n", path)
+			fmt.Printf("Database: %s\n", cfg.DatabasePath)
 			return nil
 		},
 	}
@@ -48,7 +48,7 @@ func newConfigInitCmd() *cobra.Command {
 func newConfigShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show",
-		Short: "Afficher la configuration active",
+		Short: "Show active configuration",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {

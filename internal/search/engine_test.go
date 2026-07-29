@@ -9,8 +9,8 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/model"
 )
 
-// fakeProvider est un search.Provider de test entièrement en mémoire (pas de
-// réseau), permettant de contrôler précisément latence/erreurs/résultats.
+// fakeProvider is an in-memory test search.Provider (no network),
+// allowing precise control over latency/errors/results.
 type fakeProvider struct {
 	id       string
 	delay    time.Duration
@@ -92,8 +92,8 @@ func TestEngine_PartialFailureIsVisiblePerProvider(t *testing.T) {
 }
 
 func TestEngine_RunsProvidersInParallel(t *testing.T) {
-	// 3 providers avec 200ms de délai chacun : en série ça prendrait ~600ms,
-	// en parallèle ça doit rester proche de 200ms.
+	// 3 providers with 200ms delay each: in series it would take ~600ms,
+	// in parallel it should stay close to 200ms.
 	providers := []Provider{
 		&fakeProvider{id: "a", delay: 200 * time.Millisecond},
 		&fakeProvider{id: "b", delay: 200 * time.Millisecond},

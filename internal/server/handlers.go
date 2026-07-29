@@ -45,9 +45,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 	if catStr := q.Get("cat"); catStr != "" {
 		for _, c := range strings.Split(catStr, ",") {
 			if id, err := strconv.Atoi(strings.TrimSpace(c)); err == nil {
-				// Compatibilité volontaire avec des clients *arr permissifs : les
-				// catégories invalides sont ignorées silencieusement au lieu de
-				// faire échouer toute la requête.
+				// Intentionally permissive with *arr clients: invalid
+				// categories are silently ignored instead of failing
+				// the entire request.
 				query.Categories = append(query.Categories, id)
 			}
 		}
@@ -55,8 +55,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 
 	if seasonStr := q.Get("season"); seasonStr != "" {
 		if season, err := strconv.Atoi(seasonStr); err == nil {
-			// Même logique de compatibilité permissive pour season/ep : on ignore
-			// les valeurs non parseables au lieu de renvoyer 400.
+			// Same permissive compatibility for season/ep: unparseable
+			// values are silently ignored instead of returning 400.
 			query.Season = season
 		}
 	}
@@ -77,11 +77,11 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
 	if err := WriteTorznabResponse(w, result.Releases, "gowlarr"); err != nil {
-		// Le flux de réponse a déjà été partiellement écrit (en-têtes +
-		// prologue XML) : on ne peut plus émettre un code d'erreur HTTP
-		// propre ni renvoyer err.Error() au client (fuite de détails
-		// internes). On se contente de logguer côté serveur.
-		slog.Error("écriture réponse torznab", "err", err)
+		// The response stream has already been partially written (headers +
+		// XML prolog): we can no longer emit a proper HTTP error code or
+		// return err.Error() to the client (would leak internal details).
+		// Log server-side only.
+		slog.Error("writing torznab response", "err", err)
 	}
 }
 

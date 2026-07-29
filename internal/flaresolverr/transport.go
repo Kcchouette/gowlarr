@@ -18,9 +18,8 @@ type FlareSolverrTransport struct {
 }
 
 func (t *FlareSolverrTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	// Utilise une variable locale plutôt que de muter t.Base : évite une
-	// data race si plusieurs goroutines partagent le même transport avec
-	// Base == nil.
+	// Use a local variable instead of mutating t.Base: avoids a data race
+	// when multiple goroutines share the same transport with Base == nil.
 	base := t.Base
 	if base == nil {
 		base = http.DefaultTransport

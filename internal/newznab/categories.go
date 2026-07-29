@@ -60,8 +60,8 @@ var categories = map[int]string{
 	8040: "XXX/x264",
 }
 
-// CategoryNameToID retourne l'ID d'une catégorie Newznab par son nom.
-// Retourne 0 si le nom n'est pas trouvé.
+// CategoryNameToID returns the Newznab category ID by its name.
+// Returns 0 if the name is not found.
 func CategoryNameToID(name string) int {
 	for id, n := range categories {
 		if n == name {
@@ -71,8 +71,8 @@ func CategoryNameToID(name string) int {
 	return 0
 }
 
-// CategoryIDToName retourne le nom d'une catégorie Newznab par son ID.
-// Retourne "" si l'ID n'est pas trouvé.
+// CategoryIDToName returns the Newznab category name by its ID.
+// Returns "" if the ID is not found.
 func CategoryIDToName(id int) string {
 	return categories[id]
 }

@@ -1,6 +1,6 @@
-// Package log configure le logger structured (log/slog) pour Gowlarr.
-// Les messages opérationnels (warnings, erreurs, debug) vont sur stderr via slog.
-// Les résultats utilisateur (tableaux, messages de succès) restent en fmt.Printf sur stdout.
+// Package log configures the structured logger (log/slog) for Gowlarr.
+// Operational messages (warnings, errors, debug) go to stderr via slog.
+// User results (tables, success messages) stay on fmt.Printf to stdout.
 package log
 
 import (
@@ -8,9 +8,9 @@ import (
 	"os"
 )
 
-// SetupLogger configure le logger global slog avec le niveau et le format donnés.
+// SetupLogger configures the global slog logger with the given level and format.
 // level: "debug", "info", "warn", "error"
-// jsonFormat: true pour du JSON (mode server), false pour du texte lisible (mode CLI).
+// jsonFormat: true for JSON (server mode), false for human-readable text (CLI mode).
 func SetupLogger(level string, jsonFormat bool) {
 	var lvl slog.Level
 	switch level {

@@ -1,6 +1,6 @@
-// Package download résout un model.ReleaseInfo en fichier concret
-// (.torrent/.nzb) ou en lien magnet, selon le protocole détecté sur le
-// résultat — l'utilisateur n'a jamais à choisir manuellement le protocole.
+// Package download resolves a model.ReleaseInfo into a concrete file
+// (.torrent/.nzb) or magnet link, based on the detected protocol of the
+// result — the user never has to choose the protocol manually.
 package download
 
 import (
@@ -15,49 +15,48 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/netutil"
 )
 
-// Artifact représente le fichier obtenu après résolution d'un ReleaseInfo.
+// Artifact represents the file obtained after resolving a ReleaseInfo.
 type Artifact struct {
-	// Filename suggéré pour l'enregistrement sur disque.
+	// Filename suggested for saving to disk.
 	Filename string
-	// IsMagnet indique que Content est un simple lien texte magnet:, pas un flux binaire.
+	// IsMagnet indicates that Content is a plain magnet: text link, not a binary stream.
 	IsMagnet bool
-	// Content est le contenu du fichier (.torrent/.nzb) ou le texte du lien magnet.
+	// Content is the file content (.torrent/.nzb) or the magnet link text.
 	Content []byte
 }
 
-// httpDoer est satisfait aussi bien par *http.Client que par
-// *httpclient.IndexerClient (cookies persistés/rate-limit, Slice C), pour les
-// indexeurs nécessitant une session authentifiée avant téléchargement.
+// httpDoer is satisfied by both *http.Client and *httpclient.IndexerClient
+// (persistent cookies/rate-limit, Slice C), for indexers requiring an
+// authenticated session before download.
 type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// Resolver résout un ReleaseInfo en Artifact téléchargeable.
+// Resolver resolves a ReleaseInfo into a downloadable Artifact.
 type Resolver struct {
 	HTTPClient  httpDoer
 	AuthHeaders map[string]string
 }
 
-// NewResolverWithClient construit un Resolver avec un client HTTP spécifique.
+// NewResolverWithClient builds a Resolver with a specific HTTP client.
 func NewResolverWithClient(client httpDoer, authHeaders map[string]string) *Resolver {
 	return &Resolver{HTTPClient: client, AuthHeaders: authHeaders}
 }
 
-// Resolve télécharge/résout le lien réel d'un ReleaseInfo :
-//   - lien magnet: renvoyé tel quel (pas de flux binaire à télécharger) ;
-//   - protocole usenet: récupération directe du flux .nzb ;
-//   - protocole torrent non-magnet: récupération directe du flux .torrent.
+// Resolve downloads/resolves the actual link of a ReleaseInfo:
+//   - magnet link: returned as-is (no binary stream to download);
+//   - usenet protocol: direct .nzb stream retrieval;
+//   - non-magnet torrent protocol: direct .torrent stream retrieval.
 //
-// Les indexeurs nécessitant une session authentifiée réutilisent le client
-// HTTP déjà connecté (r.HTTPClient, potentiellement un
-// httpclient.IndexerClient avec cookies persistés — cf. Slice C).
+// Indexers requiring an authenticated session reuse the already-connected
+// HTTP client (r.HTTPClient, potentially an httpclient.IndexerClient with
+// persistent cookies — see Slice C).
 //
-// Note : la résolution via une page intermédiaire (`download.selectors`
-// Cardigann) n'est pas supportée — la structure réelle de ce mécanisme
-// (Filters, Before/priming de session, Method, Infohash) est plus riche
-// qu'un simple sélecteur+attribut, et un branchement partiel romprait
-// silencieusement les indexeurs qui en dépendent réellement. Un support
-// complet serait un chantier séparé.
+// Note: resolution via an intermediate page (`download.selectors` Cardigann)
+// is not supported — the actual structure of this mechanism (Filters,
+// Before/session priming, Method, Infohash) is richer than a simple
+// selector+attribute, and a partial branch would silently break indexers
+// that actually depend on it. Full support would be a separate project.
 func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo) (Artifact, error) {
 	if strings.HasPrefix(release.DownloadLink, "magnet:") {
 		return Artifact{
@@ -67,10 +66,10 @@ func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo) (Arti
 		}, nil
 	}
 
-	// trustedHost est dérivé du lien initial fourni par l'indexeur : les
-	// AuthHeaders (credentials indexeur) ne doivent jamais être envoyés vers
-	// un hôte différent, même si un redirect pointe ensuite vers un hôte
-	// tiers arbitraire (risque de fuite de credentials, cf. audit sécurité).
+	// trustedHost is derived from the initial link provided by the indexer:
+	// AuthHeaders (indexer credentials) must never be sent to a different
+	// host, even if a redirect later points to an arbitrary third-party host
+	// (risk of credential leakage, per security audit).
 	trustedHost := hostOf(release.DownloadLink)
 
 	body, err := r.fetch(ctx, release.DownloadLink, trustedHost)
@@ -104,10 +103,10 @@ func (r *Resolver) fetch(ctx context.Context, link string, trustedHost string) (
 	}
 	req.Header.Set("User-Agent", "gowlarr/0.1 (+https://github.com/Kcchouette/gowlarr)")
 
-	// Les AuthHeaders (credentials indexeur) ne sont attachés que si la
-	// requête cible bien l'hôte de confiance initial : une page
-	// intermédiaire ou un lien extrait par un sélecteur ne doit jamais
-	// pouvoir siphonner ces credentials vers un hôte tiers arbitraire.
+	// AuthHeaders (indexer credentials) are only attached if the request
+	// targets the original trusted host: an intermediate page or a link
+	// extracted by a selector must never be able to siphon these credentials
+	// to an arbitrary third-party host.
 	if trustedHost != "" && hostOf(link) == trustedHost {
 		for header, value := range r.AuthHeaders {
 			req.Header.Set(header, value)
@@ -124,11 +123,11 @@ func (r *Resolver) fetch(ctx context.Context, link string, trustedHost string) (
 		return nil, fmt.Errorf("http status %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 Mio max, garde-fou mémoire.
+	return io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB max, memory safety guard.
 }
 
-// hostOf renvoie l'hôte (sans port) de rawURL, ou une chaîne vide si
-// l'URL est invalide.
+// hostOf returns the hostname (without port) of rawURL, or an empty string
+// if the URL is invalid.
 func hostOf(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {

@@ -18,18 +18,18 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
-// DownloadService gère la résolution des téléchargements.
+// DownloadService manages download resolution.
 type DownloadService struct {
 	store *store.Store
 	cfg   config.Config
 }
 
-// NewDownloadService crée un nouveau DownloadService.
+// NewDownloadService creates a new DownloadService.
 func NewDownloadService(st *store.Store, cfg config.Config) *DownloadService {
 	return &DownloadService{store: st, cfg: cfg}
 }
 
-// Resolve résout un résultat de recherche en un artifact téléchargeable.
+// Resolve resolves a search result into a downloadable artifact.
 func (s *DownloadService) Resolve(ctx context.Context, resultID int64) (download.Artifact, error) {
 	release, err := s.store.GetResult(resultID)
 	if err != nil {
@@ -47,13 +47,13 @@ func (s *DownloadService) Resolve(ctx context.Context, resultID int64) (download
 	return artifact, nil
 }
 
-// GetRelease récupère un résultat de recherche par son ID.
+// GetRelease retrieves a search result by its ID.
 func (s *DownloadService) GetRelease(resultID int64) (model.ReleaseInfo, error) {
 	return s.store.GetResult(resultID)
 }
 
-// buildClient retourne un client HTTP et les headers d'authentification
-// pour l'indexeur donné.
+// buildClient returns an HTTP client and authentication headers
+// for the given indexer.
 func (s *DownloadService) buildClient(indexerID string) (interface {
 	Do(*http.Request) (*http.Response, error)
 }, map[string]string) {
@@ -64,26 +64,26 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 
 	cfg, err := s.store.GetIndexerConfig(indexerID, nil)
 	if err != nil {
-		slog.Warn("téléchargement: chargement config indexeur, fallback client par défaut", "indexer_id", indexerID, "err", err)
+		slog.Warn("download: loading indexer config, falling back to default client", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
 	}
 
 	raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
 	if err != nil {
-		slog.Warn("téléchargement: chargement définition indexeur, fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
+		slog.Warn("download: loading indexer definition, falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
 		return defaultClient, nil
 	}
 
 	def, err := definition.Parse([]byte(raw))
 	if err != nil {
-		slog.Warn("téléchargement: parsing définition indexeur, fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
+		slog.Warn("download: parsing indexer definition, falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
 		return defaultClient, nil
 	}
 
 	if len(def.Links) == 0 {
-		// Définition Cardigann malformée/incomplète : pas de lien de base
-		// disponible, on ne peut pas construire de provider authentifié.
-		slog.Warn("téléchargement: definition sans links[], fallback client par défaut", "indexer_id", indexerID, "definition_id", cfg.DefinitionID)
+		// Malformed/incomplete Cardigann definition: no base link
+		// available, cannot build an authenticated provider.
+		slog.Warn("download: definition has no links[], falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID)
 		return defaultClient, nil
 	}
 
@@ -93,7 +93,7 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, s.cfg),
 	})
 	if err != nil {
-		slog.Warn("téléchargement: construction client HTTP indexeur, fallback client par défaut", "indexer_id", indexerID, "err", err)
+		slog.Warn("download: building indexer HTTP client, falling back to default client", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
 	}
 

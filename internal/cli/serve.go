@@ -29,9 +29,9 @@ func newServeCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Démarrer le serveur HTTP Torznab/Newznab",
-		Long: `Démarre un serveur HTTP exposant une API compatible Torznab/Newznab
-pour une intégration avec Sonarr, Radarr, ou tout autre client compatible.`,
+		Short: "Start the Torznab/Newznab HTTP server",
+		Long: `Starts an HTTP server exposing a Torznab/Newznab-compatible API
+for integration with Sonarr, Radarr, or any other compatible client.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
 			if err != nil {
@@ -41,17 +41,17 @@ pour une intégration avec Sonarr, Radarr, ou tout autre client compatible.`,
 
 			if apiKey == "" && !insecurePublic && !isLoopbackAddr(addr) {
 				return fmt.Errorf(
-					"--addr %q n'est pas restreint à localhost et --apikey est vide : "+
-						"les indexeurs configurés seraient exposés sans authentification sur le réseau. "+
-						"Fournissez --apikey, utilisez une adresse loopback (127.0.0.1:PORT), "+
-						"ou passez --insecure-public pour accepter ce risque explicitement", addr)
+					"--addr %q is not restricted to localhost and --apikey is empty: "+
+						"configured indexers would be exposed without authentication on the network. "+
+						"Provide --apikey, use a loopback address (127.0.0.1:PORT), "+
+						"or pass --insecure-public to accept this risk explicitly", addr)
 			}
 
 			providers := []search.Provider{apibay.New()}
 
 			configured, err := service.BuildConfiguredProviders(st, cfg)
 			if err != nil {
-				slog.Warn("chargement des indexeurs configurés", "err", err)
+				slog.Warn("loading configured indexers", "err", err)
 			} else {
 				providers = append(providers, configured...)
 			}
@@ -64,11 +64,11 @@ pour une intégration avec Sonarr, Radarr, ou tout autre client compatible.`,
 
 			go func() {
 				<-ctx.Done()
-				slog.Info("arrêt du serveur...")
+				slog.Info("shutting down server...")
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := srv.Shutdown(shutdownCtx); err != nil {
-					slog.Error("erreur lors de l'arrêt", "err", err)
+					slog.Error("error during shutdown", "err", err)
 				}
 			}()
 
@@ -76,19 +76,18 @@ pour une intégration avec Sonarr, Radarr, ou tout autre client compatible.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&addr, "addr", ":9696", "Adresse d'écoute")
-	cmd.Flags().StringVar(&apiKey, "apikey", "", "Clé API pour authentification")
-	cmd.Flags().StringVar(&corsOrigin, "cors-origin", "", "Origine CORS autorisée (désactivé par défaut)")
+	cmd.Flags().StringVar(&addr, "addr", ":9696", "Listen address")
+	cmd.Flags().StringVar(&apiKey, "apikey", "", "API key for authentication")
+	cmd.Flags().StringVar(&corsOrigin, "cors-origin", "", "Allowed CORS origin (disabled by default)")
 	cmd.Flags().BoolVar(&insecurePublic, "insecure-public", false,
-		"Autoriser une écoute non-loopback sans clé API (déconseillé)")
+		"Allow non-loopback listen without API key (not recommended)")
 
 	return cmd
 }
 
-// isLoopbackAddr indique si addr (host:port ou :port) est restreinte à
-// l'interface loopback (127.0.0.1, ::1, localhost). Une adresse vide de
-// host (ex: ":9696") écoute sur toutes les interfaces et n'est donc pas
-// considérée comme loopback.
+// isLoopbackAddr reports whether addr (host:port or :port) is restricted to
+// the loopback interface (127.0.0.1, ::1, localhost). An empty host
+// (e.g. ":9696") listens on all interfaces and is not considered loopback.
 func isLoopbackAddr(addr string) bool {
 	host, _, err := net.SplitHostPort(addr)
 	if err != nil {

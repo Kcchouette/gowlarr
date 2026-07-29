@@ -1,11 +1,11 @@
-// Package model contient les types partagés par tout Gowlarr (résultats de
-// recherche normalisés, protocoles, etc.), indépendants de tout indexeur
-// concret ou moteur de parsing.
+// Package model contains the types shared across all of Gowlarr (normalized
+// search results, protocols, etc.), independent of any concrete indexer
+// or parsing engine.
 package model
 
 import "time"
 
-// Protocol distingue le protocole de distribution d'une release.
+// Protocol distinguishes the distribution protocol of a release.
 type Protocol string
 
 const (
@@ -13,20 +13,20 @@ const (
 	ProtocolUsenet  Protocol = "usenet"
 )
 
-// ReleaseInfo est le résultat normalisé d'une recherche, quel que soit
-// l'indexeur ou le moteur d'origine (Cardigann torrent, Cardigann usenet,
-// ou Newznab générique natif).
+// ReleaseInfo is the normalized result of a search, regardless of the
+// originating indexer or engine (Cardigann torrent, Cardigann usenet,
+// or native generic Newznab).
 type ReleaseInfo struct {
-	// ID est un identifiant stable, unique dans la session de recherche
-	// courante, utilisé par la commande `download <id>`.
+	// ID is a stable identifier, unique within the current search session,
+	// used by the `download <id>` command.
 	ID int64
 
 	Title        string
-	Details      string // URL de la page de détails, si disponible.
-	DownloadLink string // Lien direct (magnet, .torrent, .nzb) ou lien à résoudre.
+	Details      string // URL of the details page, if available.
+	DownloadLink string // Direct link (magnet, .torrent, .nzb) or link to resolve.
 	InfoHash     string
 
-	Size        int64 // en octets, 0 si inconnu.
+	Size        int64 // in bytes, 0 if unknown.
 	PublishDate time.Time
 
 	Seeders int

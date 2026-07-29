@@ -13,7 +13,7 @@ import (
 func newIndexerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "indexer",
-		Short: "Gérer les indexeurs configurés (instances persistantes d'une définition)",
+		Short: "Manage configured indexers (persistent instances of a definition)",
 	}
 	cmd.AddCommand(newIndexerAddCmd())
 	cmd.AddCommand(newIndexerListCmd())
@@ -33,7 +33,7 @@ func newIndexerAddCmd() *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "add <definition-id>",
-		Short: "Ajouter une instance d'indexeur à partir d'une définition en cache",
+		Short: "Add an indexer instance from a cached definition",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
@@ -56,14 +56,14 @@ func newIndexerAddCmd() *cobra.Command {
 			if instanceID == "" {
 				instanceID = args[0]
 			}
-			fmt.Printf("Indexeur %q ajouté (définition %q).\n", instanceID, args[0])
+			fmt.Printf("Indexer %q added (definition %q).\n", instanceID, args[0])
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "Identifiant de l'instance (défaut: identique à la définition)")
-	cmd.Flags().StringVar(&version, "version", "v11", "Version du schéma de la définition")
-	cmd.Flags().StringVar(&proxyURL, "proxy", "", "URL de proxy dédié (http://... ou socks5://...)")
-	cmd.Flags().StringArrayVar(&settings, "setting", nil, "Paramètre au format key=value (répétable)")
+	cmd.Flags().StringVar(&id, "id", "", "Instance ID (default: same as definition)")
+	cmd.Flags().StringVar(&version, "version", "v11", "Definition schema version")
+	cmd.Flags().StringVar(&proxyURL, "proxy", "", "Dedicated proxy URL (http://... or socks5://...)")
+	cmd.Flags().StringArrayVar(&settings, "setting", nil, "Setting in key=value format (repeatable)")
 	return cmd
 }
 
@@ -82,7 +82,7 @@ func parseSettingFlags(settings []string) (map[string]string, error) {
 func newIndexerListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Lister les indexeurs configurés",
+		Short: "List configured indexers",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
 			if err != nil {
@@ -96,10 +96,10 @@ func newIndexerListCmd() *cobra.Command {
 				return err
 			}
 			if len(configs) == 0 {
-				fmt.Println("Aucun indexeur configuré. Utilisez `gowlarr indexer add <definition-id>`.")
+				fmt.Println("No indexers configured. Use `gowlarr indexer add <definition-id>`.")
 				return nil
 			}
-			fmt.Printf("%-20s %-20s %-8s %s\n", "ID", "DEFINITION", "PROTO", "ACTIF")
+			fmt.Printf("%-20s %-20s %-8s %s\n", "ID", "DEFINITION", "PROTO", "ENABLED")
 			for _, c := range configs {
 				fmt.Printf("%-20s %-20s %-8s %v\n", c.ID, c.DefinitionID, c.Protocol, c.Enabled)
 			}
@@ -111,7 +111,7 @@ func newIndexerListCmd() *cobra.Command {
 func newIndexerRemoveCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "remove <id>",
-		Short: "Supprimer un indexeur configuré",
+		Short: "Remove a configured indexer",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
@@ -124,16 +124,16 @@ func newIndexerRemoveCmd() *cobra.Command {
 			if err := svc.Remove(args[0]); err != nil {
 				return err
 			}
-			fmt.Printf("Indexeur %q supprimé.\n", args[0])
+			fmt.Printf("Indexer %q removed.\n", args[0])
 			return nil
 		},
 	}
 }
 
 func newIndexerEnableCmd(enable bool) *cobra.Command {
-	use, short := "enable <id>", "Activer un indexeur configuré"
+	use, short := "enable <id>", "Enable a configured indexer"
 	if !enable {
-		use, short = "disable <id>", "Désactiver un indexeur configuré"
+		use, short = "disable <id>", "Disable a configured indexer"
 	}
 	return &cobra.Command{
 		Use:   use,
@@ -150,7 +150,7 @@ func newIndexerEnableCmd(enable bool) *cobra.Command {
 			if err := svc.Enable(args[0], enable); err != nil {
 				return err
 			}
-			fmt.Printf("Indexeur %q mis à jour (actif=%v).\n", args[0], enable)
+			fmt.Printf("Indexer %q updated (enabled=%v).\n", args[0], enable)
 			return nil
 		},
 	}
@@ -160,7 +160,7 @@ func newIndexerTestCmd() *cobra.Command {
 	var version string
 	cmd := &cobra.Command{
 		Use:   "test <id>",
-		Short: "Tester la connectivité/authentification d'un indexeur configuré",
+		Short: "Test connectivity/authentication of a configured indexer",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
@@ -171,13 +171,13 @@ func newIndexerTestCmd() *cobra.Command {
 
 			svc := service.NewIndexerService(st, cfg)
 			if err := svc.Test(cmd.Context(), args[0], version); err != nil {
-				slog.Error("test indexeur échoué", "id", args[0], "err", err)
+				slog.Error("indexer test failed", "id", args[0], "err", err)
 				return err
 			}
-			fmt.Printf("✅ %s : OK (connexion + parsing fonctionnels)\n", args[0])
+			fmt.Printf("✅ %s: OK (connection + parsing functional)\n", args[0])
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Version du schéma de la définition")
+	cmd.Flags().StringVar(&version, "version", "v11", "Definition schema version")
 	return cmd
 }

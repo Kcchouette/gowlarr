@@ -14,7 +14,7 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
-// SearchParams contient les paramètres d'une recherche.
+// SearchParams contains the parameters for a search.
 type SearchParams struct {
 	Keywords        string
 	Categories      []int
@@ -26,28 +26,28 @@ type SearchParams struct {
 	NewznabName     string
 }
 
-// SearchResult contient les résultats d'une recherche.
+// SearchResult contains the results of a search.
 type SearchResult struct {
 	Releases []model.ReleaseInfo
 	Errors   []*search.ProviderError
 }
 
-// SearchService orchestre les recherches multi-indexeurs.
+// SearchService orchestrates multi-indexer searches.
 type SearchService struct {
 	store *store.Store
 	cfg   config.Config
 }
 
-// NewSearchService crée un nouveau SearchService.
+// NewSearchService creates a new SearchService.
 func NewSearchService(st *store.Store, cfg config.Config) *SearchService {
 	return &SearchService{store: st, cfg: cfg}
 }
 
-// Search exécute une recherche sur tous les indexeurs actifs.
+// Search executes a search across all active indexers.
 func (s *SearchService) Search(ctx context.Context, params SearchParams) (SearchResult, error) {
 	purgeStart := time.Now()
 	if err := s.store.PurgeExpiredResults(); err != nil {
-		slog.Warn("échec purge résultats expirés", "duration", time.Since(purgeStart), "err", err)
+		slog.Warn("failed to purge expired results", "duration", time.Since(purgeStart), "err", err)
 	} else {
 		slog.Debug("purge expired results", "duration", time.Since(purgeStart))
 	}
@@ -64,7 +64,7 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 
 	configured, err := BuildConfiguredProviders(s.store, s.cfg)
 	if err != nil {
-		slog.Warn("chargement des indexeurs configurés", "err", err)
+		slog.Warn("loading configured indexers", "err", err)
 	} else {
 		providers = append(providers, configured...)
 	}

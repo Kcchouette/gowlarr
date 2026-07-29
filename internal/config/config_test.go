@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// isolateUserDirs redirige os.UserConfigDir()/os.UserCacheDir() vers un
-// dossier temporaire pour le test, afin de ne jamais toucher la vraie
-// configuration de l'utilisateur qui exécute les tests.
+// isolateUserDirs redirects os.UserConfigDir()/os.UserCacheDir() to a
+// temporary directory for testing, so it never touches the real user's
+// configuration.
 func isolateUserDirs(t *testing.T) {
 	t.Helper()
 	tmp := t.TempDir()

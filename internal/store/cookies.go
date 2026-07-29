@@ -8,10 +8,10 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
-// LoadCookies implémente httpclient.CookiePersister : renvoie "" si aucun
-// cookie n'est encore stocké pour cet indexeur.
-// Si key est non nil, tente de déchiffrer cookie_enc (BLOB).
-// Sinon, lit cookie_json (TEXT) pour rétrocompatibilité.
+// LoadCookies implements httpclient.CookiePersister: returns "" if no
+// cookies are stored yet for this indexer.
+// If key is non-nil, attempts to decrypt cookie_enc (BLOB).
+// Otherwise, reads cookie_json (TEXT) for backward compatibility.
 func (s *Store) LoadCookies(indexerID string, key []byte) (string, error) {
 	var cookieJSON string
 	var cookieEnc []byte
@@ -34,10 +34,10 @@ func (s *Store) LoadCookies(indexerID string, key []byte) (string, error) {
 	return cookieJSON, nil
 }
 
-// SaveCookies implémente httpclient.CookiePersister : upsert des cookies
-// courants pour cet indexeur.
-// Si key est non nil, chiffre en cookie_enc (BLOB).
-// Sinon, stocke en cookie_json (TEXT) pour rétrocompatibilité.
+// SaveCookies implements httpclient.CookiePersister: upserts current
+// cookies for this indexer.
+// If key is non-nil, encrypts into cookie_enc (BLOB).
+// Otherwise, stores in cookie_json (TEXT) for backward compatibility.
 func (s *Store) SaveCookies(indexerID string, cookieJSON string, key []byte) error {
 	now := time.Now().UTC().Format(time.RFC3339)
 

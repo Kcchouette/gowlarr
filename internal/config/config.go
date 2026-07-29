@@ -1,6 +1,6 @@
-// Package config gère la configuration explicite de Gowlarr (pas de viper,
-// cf. décision suite à revue indépendante : config chargée/validée à la main
-// pour rester simple à tester).
+// Package config manages Gowlarr's explicit configuration (no viper,
+// per decision following independent review: config loaded/validated
+// manually to keep testing simple).
 package config
 
 import (
@@ -10,23 +10,22 @@ import (
 	"path/filepath"
 )
 
-// Config représente la configuration persistée de Gowlarr.
+// Config represents Gowlarr's persisted configuration.
 type Config struct {
-	// DatabasePath est le chemin vers le fichier SQLite.
+	// DatabasePath is the path to the SQLite file.
 	DatabasePath string `json:"database_path"`
-	// DefsCacheDir est le dossier de cache des définitions Cardigann téléchargées.
+	// DefsCacheDir is the cache directory for downloaded Cardigann definitions.
 	DefsCacheDir string `json:"defs_cache_dir"`
-	// LogLevel est le niveau de log (debug, info, warn, error).
+	// LogLevel is the log level (debug, info, warn, error).
 	LogLevel string `json:"log_level"`
-	// HTTPProxy est un proxy HTTP par défaut (optionnel, peut être surchargé par indexeur).
+	// HTTPProxy is a default HTTP proxy (optional, can be overridden per indexer).
 	HTTPProxy string `json:"http_proxy,omitempty"`
-	// FlareSolverrURL est l'URL du service FlareSolverr (optionnel, post-MVP).
+	// FlareSolverrURL is the FlareSolverr service URL (optional, post-MVP).
 	FlareSolverrURL string `json:"flaresolverr_url,omitempty"`
 }
 
-// Dir retourne le dossier de configuration de Gowlarr, en utilisant les
-// conventions du système d'exploitation (os.UserConfigDir), pas un chemin
-// codé en dur — important pour la portabilité Windows.
+// Dir returns Gowlarr's config directory, using OS conventions
+// (os.UserConfigDir), not a hardcoded path — important for Windows portability.
 func Dir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -35,7 +34,7 @@ func Dir() (string, error) {
 	return filepath.Join(base, "gowlarr"), nil
 }
 
-// CacheDir retourne le dossier de cache de Gowlarr (os.UserCacheDir).
+// CacheDir returns Gowlarr's cache directory (os.UserCacheDir).
 func CacheDir() (string, error) {
 	base, err := os.UserCacheDir()
 	if err != nil {
@@ -44,7 +43,7 @@ func CacheDir() (string, error) {
 	return filepath.Join(base, "gowlarr"), nil
 }
 
-// Path retourne le chemin complet du fichier config.json.
+// Path returns the full path to the config.json file.
 func Path() (string, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -53,8 +52,8 @@ func Path() (string, error) {
 	return filepath.Join(dir, "config.json"), nil
 }
 
-// Default construit une configuration par défaut avec des chemins résolus
-// dynamiquement (jamais codés en dur).
+// Default builds a default configuration with dynamically resolved paths
+// (never hardcoded).
 func Default() (Config, error) {
 	dir, err := Dir()
 	if err != nil {
@@ -71,8 +70,8 @@ func Default() (Config, error) {
 	}, nil
 }
 
-// Load lit la configuration depuis le disque. Si le fichier n'existe pas,
-// retourne une configuration par défaut sans erreur.
+// Load reads the configuration from disk. If the file does not exist,
+// returns a default configuration without error.
 func Load() (Config, error) {
 	path, err := Path()
 	if err != nil {
@@ -92,7 +91,7 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// Save écrit la configuration sur le disque, en créant le dossier parent si besoin.
+// Save writes the configuration to disk, creating the parent directory if needed.
 func (c Config) Save() error {
 	path, err := Path()
 	if err != nil {

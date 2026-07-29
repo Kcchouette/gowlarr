@@ -46,8 +46,8 @@ func New(addr, apiKey, corsOrigin string, engine *search.Engine, st *store.Store
 }
 
 func (s *Server) ListenAndServe() error {
-	slog.Info("serveur démarré", "addr", s.addr)
-	slog.Info("endpoint API", "url", fmt.Sprintf("http://%s/api?t=search&q=<query>&apikey=<key>", s.addr))
+	slog.Info("server started", "addr", s.addr)
+	slog.Info("API endpoint", "url", fmt.Sprintf("http://%s/api?t=search&q=<query>&apikey=<key>", s.addr))
 	return s.srv.ListenAndServe()
 }
 

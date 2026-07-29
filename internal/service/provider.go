@@ -1,5 +1,5 @@
-// Package service implémente la couche métier de Gowlarr, séparant la logique
-// d'orchestration des commandes CLI et du serveur HTTP.
+// Package service implements the business logic layer of Gowlarr, separating
+// orchestration logic from CLI commands and HTTP server handlers.
 package service
 
 import (
@@ -17,10 +17,10 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
-// BuildConfiguredProviders construit un search.Provider Cardigann pour
-// chaque indexeur activé, avec session authentifiée si la définition l'exige.
-// Si cfg.FlareSolverrURL est défini, le transport FlareSolverr est utilisé
-// pour contourner les protections Cloudflare.
+// BuildConfiguredProviders builds a Cardigann search.Provider for each
+// enabled indexer, with authenticated session if the definition requires it.
+// If cfg.FlareSolverrURL is set, the FlareSolverr transport is used to
+// bypass Cloudflare protections.
 func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Provider, error) {
 	configs, err := st.ListIndexerConfigs(true, nil)
 	if err != nil {
@@ -30,23 +30,23 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 	var flareClient *flaresolverr.Client
 	if cfg.FlareSolverrURL != "" {
 		flareClient = flaresolverr.NewClient(cfg.FlareSolverrURL)
-		slog.Debug("flaresolverr activé", "url", cfg.FlareSolverrURL)
+		slog.Debug("flaresolverr enabled", "url", cfg.FlareSolverrURL)
 	}
 
 	providers := make([]search.Provider, 0, len(configs))
 	for _, idxCfg := range configs {
 		raw, _, err := st.GetDefinitionYAMLFallback(idxCfg.DefinitionID)
 		if err != nil {
-			slog.Warn("indexeur: definition non trouvée", "id", idxCfg.ID, "err", err)
+			slog.Warn("indexer: definition not found", "id", idxCfg.ID, "err", err)
 			continue
 		}
 		def, err := definition.Parse([]byte(raw))
 		if err != nil {
-			slog.Warn("indexeur: parsing definition", "id", idxCfg.ID, "err", err)
+			slog.Warn("indexer: parsing definition", "id", idxCfg.ID, "err", err)
 			continue
 		}
 		if len(def.Links) == 0 {
-			slog.Warn("indexeur: definition sans links[]", "id", idxCfg.ID)
+			slog.Warn("indexer: definition has no links", "id", idxCfg.ID)
 			continue
 		}
 
@@ -56,11 +56,11 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			ProxyURL:  effectiveProxyURL(idxCfg.ProxyURL, cfg),
 		})
 		if err != nil {
-			slog.Warn("indexeur: construction http client", "id", idxCfg.ID, "err", err)
+			slog.Warn("indexer: building http client", "id", idxCfg.ID, "err", err)
 			continue
 		}
 
-		// Injecter le transport FlareSolverr si configuré
+		// Inject FlareSolverr transport if configured
 		if flareClient != nil {
 			transport := &flaresolverr.FlareSolverrTransport{
 				Base:        client.HTTPClient().Transport,
@@ -75,7 +75,7 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 	return providers, nil
 }
 
-// BuildIndexerProvider construit un provider Cardigann pour un indexeur spécifique (test).
+// BuildIndexerProvider builds a Cardigann provider for a specific indexer (testing).
 func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
 	raw, _, err := st.GetDefinitionYAMLFallback(cfg.DefinitionID)
 	if err != nil {

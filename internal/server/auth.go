@@ -13,10 +13,9 @@ func (s *Server) requireAPIKey(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// Le protocole Torznab/Newznab transmet classiquement l'API key en
-		// query string (`apikey=`) : c'est la convention interop attendue par
-		// Prowlarr, Jackett et les clients *arr, pas un choix spécifique à
-		// Gowlarr.
+		// The Torznab/Newznab protocol conventionally transmits the API key
+		// as a query string parameter (`apikey=`): this is the interop
+		// convention expected by Prowlarr, Jackett, and *arr clients.
 		apikey := r.URL.Query().Get("apikey")
 		if subtle.ConstantTimeCompare([]byte(apikey), []byte(s.apiKey)) != 1 {
 			http.Error(w, "Invalid API key", http.StatusForbidden)

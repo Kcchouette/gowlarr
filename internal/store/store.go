@@ -1,6 +1,5 @@
-// Package store gère l'accès à la base SQLite embarquée (modernc.org/sqlite,
-// pur Go sans cgo — choix retenu pour rester facilement cross-compilable,
-// notamment depuis Windows).
+// Package store manages access to the embedded SQLite database (modernc.org/sqlite,
+// pure Go without cgo — chosen for easy cross-compilation, especially from Windows).
 package store
 
 import (
@@ -21,14 +20,14 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Store encapsule la connexion SQLite et les opérations de persistance.
+// Store wraps the SQLite connection and persistence operations.
 type Store struct {
 	db *sql.DB
 }
 
-// Open ouvre (ou crée) la base SQLite au chemin donné, applique les
-// migrations en attente et configure les pragmas recommandés pour un usage
-// CLI mono-processus (busy_timeout, WAL, foreign_keys).
+// Open opens (or creates) the SQLite database at the given path, applies
+// pending migrations, and configures pragmas recommended for single-process
+// CLI usage (busy_timeout, WAL, foreign_keys).
 func Open(path string) (*Store, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("creating database dir: %w", err)
@@ -39,7 +38,7 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database %s: %w", path, err)
 	}
-	db.SetMaxOpenConns(1) // SQLite + writer unique : évite les erreurs "database is locked" en CLI.
+	db.SetMaxOpenConns(1) // SQLite single writer: avoids "database is locked" errors in CLI.
 
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
@@ -54,7 +53,7 @@ func Open(path string) (*Store, error) {
 	return s, nil
 }
 
-// Close ferme la connexion à la base.
+// Close closes the database connection.
 func (s *Store) Close() error {
 	return s.db.Close()
 }

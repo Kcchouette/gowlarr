@@ -10,9 +10,9 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// fixtureRSS est un flux RSS Newznab entièrement inventé pour le test (pas
-// une réponse réelle d'un indexeur usenet), afin de valider le parsing
-// RSS 2.0 + newznab:attr sans dépendance réseau.
+// fixtureRSS is a completely fictional Newznab RSS feed for testing (not a
+// real usenet indexer response), used to validate RSS 2.0 + newznab:attr
+// parsing without network dependency.
 const fixtureRSS = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
   <channel>

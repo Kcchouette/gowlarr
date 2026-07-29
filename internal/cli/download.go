@@ -18,10 +18,10 @@ func newDownloadCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "download <result-id>",
-		Short: "Télécharger/résoudre le fichier réel d'un résultat de recherche",
-		Long: `Récupère automatiquement le bon fichier (.torrent, lien magnet, ou .nzb)
-selon le protocole détecté du résultat sélectionné — vous n'avez pas à
-préciser vous-même le protocole. L'ID provient d'un précédent "gowlarr search".`,
+		Short: "Download/resolve the actual file from a search result",
+		Long: `Automatically retrieves the correct file (.torrent, magnet link, or .nzb)
+based on the detected protocol of the selected result — you don't need to
+specify the protocol yourself. The ID comes from a previous "gowlarr search".`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resultID, err := strconv.ParseInt(args[0], 10, 64)
@@ -57,13 +57,13 @@ préciser vous-même le protocole. L'ID provient d'un précédent "gowlarr searc
 			if err := os.WriteFile(path, artifact.Content, 0o644); err != nil {
 				return fmt.Errorf("writing file %s: %w", path, err)
 			}
-			fmt.Printf("Téléchargé : %s\n", path)
+			fmt.Printf("Downloaded: %s\n", path)
 			return nil
 		},
 	}
 
-	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Chemin du fichier de sortie (défaut: nom dérivé du titre)")
-	cmd.Flags().BoolVar(&toStdout, "stdout", false, "Écrire le contenu sur la sortie standard")
+	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "Output file path (default: name derived from title)")
+	cmd.Flags().BoolVar(&toStdout, "stdout", false, "Write content to stdout")
 
 	return cmd
 }

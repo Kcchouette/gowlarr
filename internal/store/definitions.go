@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// DefinitionMeta décrit une définition Cardigann en cache (sans le YAML brut).
+// DefinitionMeta describes a cached Cardigann definition (without the raw YAML).
 type DefinitionMeta struct {
 	ID           string
 	Version      string
@@ -15,9 +15,9 @@ type DefinitionMeta struct {
 	DownloadedAt time.Time
 }
 
-// SaveDefinition upsert une définition Cardigann brute (YAML) en cache local,
-// indexée par (id, version). Le YAML n'est jamais redistribué : il est
-// uniquement mis en cache pour l'utilisateur courant (cf. disclaimer légal).
+// SaveDefinition upserts a raw Cardigann definition (YAML) into the local cache,
+// indexed by (id, version). The YAML is never redistributed: it is only
+// cached for the current user (see legal disclaimer).
 func (s *Store) SaveDefinition(id, version, sha, rawYAML string) error {
 	_, err := s.db.Exec(`INSERT INTO indexer_definitions (id, version, yaml_sha, downloaded_at, raw_yaml)
 		VALUES (?, ?, ?, ?, ?)
@@ -30,7 +30,7 @@ func (s *Store) SaveDefinition(id, version, sha, rawYAML string) error {
 	return nil
 }
 
-// GetDefinitionYAML récupère le YAML brut mis en cache pour un id/version donnés.
+// GetDefinitionYAML retrieves the cached raw YAML for a given id/version.
 func (s *Store) GetDefinitionYAML(id, version string) (string, error) {
 	var raw string
 	err := s.db.QueryRow(`SELECT raw_yaml FROM indexer_definitions WHERE id = ? AND version = ?`, id, version).Scan(&raw)
@@ -43,8 +43,8 @@ func (s *Store) GetDefinitionYAML(id, version string) (string, error) {
 	return raw, nil
 }
 
-// ListDefinitions liste les définitions en cache pour une version donnée
-// ("" pour toutes versions confondues).
+// ListDefinitions lists cached definitions for a given version
+// ("" for all versions).
 func (s *Store) ListDefinitions(version string) ([]DefinitionMeta, error) {
 	query := `SELECT id, version, yaml_sha, downloaded_at FROM indexer_definitions`
 	args := []any{}

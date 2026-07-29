@@ -25,11 +25,10 @@ func newSearchCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "search <query>",
-		Short: "Rechercher une release sur les indexeurs configurés (torrent + usenet)",
-		Long: `Interroge en parallèle les indexeurs actifs (torrent et usenet) et affiche
-une liste numérotée unifiée de résultats. Les résultats sont persistés (avec
-expiration) pour permettre "gowlarr download <id>" dans une invocation
-séparée du CLI.`,
+		Short: "Search for a release on configured indexers (torrent + usenet)",
+		Long: `Queries active indexers (torrent and usenet) in parallel and displays
+a unified numbered list of results. Results are persisted (with expiration)
+to allow "gowlarr download <id>" in a separate CLI invocation.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
@@ -56,11 +55,11 @@ séparée du CLI.`,
 			}
 
 			for _, perr := range result.Errors {
-				slog.Warn("indexeur", "err", perr.Error())
+				slog.Warn("indexer", "err", perr.Error())
 			}
 
 			if len(result.Releases) == 0 {
-				fmt.Println("Aucun résultat.")
+				fmt.Println("No results.")
 				return nil
 			}
 
@@ -69,16 +68,16 @@ séparée du CLI.`,
 		},
 	}
 
-	cmd.Flags().StringVar(&newznabURL, "newznab-url", "", "URL de base d'un indexeur Newznab générique")
-	cmd.Flags().StringVar(&newznabAPIKey, "newznab-apikey", "", "Clé API de l'indexeur Newznab générique")
-	cmd.Flags().StringVar(&newznabName, "newznab-name", "", "Nom affiché de l'indexeur Newznab générique")
-	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Sortie au format JSON")
-	cmd.Flags().StringVar(&searchType, "type", "search", "Type de recherche (search, tvsearch, movie, music, book)")
-	cmd.Flags().IntSliceVar(&categories, "category", nil, "Filtrer par catégorie(s) Newznab (repeatable)")
-	cmd.Flags().IntVar(&season, "season", 0, "Numéro de saison (pour tvsearch)")
-	cmd.Flags().IntVar(&episode, "episode", 0, "Numéro d'épisode (pour tvsearch)")
-	cmd.Flags().StringVar(&imdbID, "imdb-id", "", "ID IMDB (pour movie/tvsearch)")
-	cmd.Flags().StringVar(&tmdbID, "tmdb-id", "", "ID TMDB (pour movie)")
+	cmd.Flags().StringVar(&newznabURL, "newznab-url", "", "Base URL of a generic Newznab indexer")
+	cmd.Flags().StringVar(&newznabAPIKey, "newznab-apikey", "", "API key of the generic Newznab indexer")
+	cmd.Flags().StringVar(&newznabName, "newznab-name", "", "Display name of the generic Newznab indexer")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
+	cmd.Flags().StringVar(&searchType, "type", "search", "Search type (search, tvsearch, movie, music, book)")
+	cmd.Flags().IntSliceVar(&categories, "category", nil, "Filter by Newznab category ID(s) (repeatable)")
+	cmd.Flags().IntVar(&season, "season", 0, "Season number (for tvsearch)")
+	cmd.Flags().IntVar(&episode, "episode", 0, "Episode number (for tvsearch)")
+	cmd.Flags().StringVar(&imdbID, "imdb-id", "", "IMDb ID (for movie/tvsearch)")
+	cmd.Flags().StringVar(&tmdbID, "tmdb-id", "", "TMDB ID (for movie)")
 
 	return cmd
 }

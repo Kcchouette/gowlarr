@@ -1,4 +1,4 @@
-// Package cli implémente les commandes cobra de Gowlarr (Slice A/D du MVP).
+// Package cli implements the cobra commands for Gowlarr.
 package cli
 
 import (
@@ -12,11 +12,11 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
-// Execute construit et exécute la commande racine cobra.
+// Execute builds and runs the root cobra command.
 func Execute() {
 	root := newRootCmd()
 	if err := root.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "erreur:", err)
+		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
@@ -26,12 +26,12 @@ func newRootCmd() *cobra.Command {
 
 	root := &cobra.Command{
 		Use:   "gowlarr",
-		Short: "Gowlarr — gestionnaire d'indexeurs torrent/usenet en Go (MVP)",
-		Long: `Gowlarr est un outil CLI de recherche et de résolution de liens
-torrent/usenet sur des indexeurs configurés par l'utilisateur.
+		Short: "Gowlarr — torrent/usenet indexer manager in Go",
+		Long: `Gowlarr is a CLI tool for searching and resolving torrent/usenet links
+on user-configured indexers.
 
-Non-affilié à Prowlarr/Servarr. Voir le README pour le disclaimer légal complet.
-Vous êtes seul responsable de l'usage que vous faites de cet outil.`,
+Not affiliated with Prowlarr/Servarr. See README for the full legal disclaimer.
+You are solely responsible for how you use this tool.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			level := "info"
 			if verbose {
@@ -41,7 +41,7 @@ Vous êtes seul responsable de l'usage que vous faites de cet outil.`,
 		},
 	}
 
-	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Activer les messages de debug détaillés")
+	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
 
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newDefsCmd())
@@ -53,8 +53,8 @@ Vous êtes seul responsable de l'usage que vous faites de cet outil.`,
 	return root
 }
 
-// openStore charge la config et ouvre la base SQLite associée — utilitaire
-// commun à toutes les sous-commandes qui ont besoin de persistance.
+// openStore loads config and opens the associated SQLite database — shared
+// utility for all subcommands that need persistence.
 func openStore() (*store.Store, config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {

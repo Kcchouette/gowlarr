@@ -10,24 +10,24 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/model"
 )
 
-// Engine orchestre l'exécution en parallèle de plusieurs Provider et agrège
-// les résultats. Chaque indexeur est borné par un timeout individuel pour
-// qu'un indexeur lent ou en panne ne bloque pas les autres (retour d'erreur
-// partielle visible par source, cf. plan Slice D).
+// Engine orchestrates parallel execution of multiple Providers and aggregates
+// results. Each indexer is bounded by an individual timeout so that a slow
+// or failing indexer does not block the others (partial error return visible
+// per source).
 type Engine struct {
 	Providers      []Provider
-	PerProviderTTL time.Duration // timeout appliqué à chaque provider.
+	PerProviderTTL time.Duration // timeout applied to each provider.
 }
 
-// NewEngine construit un moteur de recherche avec un timeout par défaut de 20s
-// par indexeur si aucun n'est spécifié.
+// NewEngine builds a search engine with a default 20s timeout per indexer
+// if none is specified.
 func NewEngine(providers []Provider) *Engine {
-	return &Engine{Providers: providers, PerProviderTTL: 20 * time.Second} // Valeur par défaut courte pour garder une recherche interactive réactive.
+	return &Engine{Providers: providers, PerProviderTTL: 20 * time.Second}
 }
 
-// ProviderError associe une erreur à l'indexeur qui l'a produite, pour que
-// l'utilisateur voie précisément quel indexeur a échoué sans faire échouer
-// toute la recherche.
+// ProviderError associates an error with the indexer that produced it, so
+// the user can see exactly which indexer failed without failing the
+// entire search.
 type ProviderError struct {
 	IndexerID string
 	Err       error
@@ -37,23 +37,23 @@ func (e *ProviderError) Error() string {
 	return fmt.Sprintf("indexer %s: %v", e.IndexerID, e.Err)
 }
 
-// Result est le résultat agrégé d'une recherche multi-indexeurs.
+// Result is the aggregated result of a multi-indexer search.
 type Result struct {
 	Releases []model.ReleaseInfo
 	Errors   []*ProviderError
 }
 
-// Search interroge tous les providers en parallèle et agrège les résultats,
-// triés par date de publication décroissante puis par seeders décroissants.
+// Search queries all providers in parallel and aggregates results,
+// sorted by publication date descending then by seeders descending.
 func (e *Engine) Search(ctx context.Context, q Query) Result {
 	engineTimeout := e.PerProviderTTL * 2
 	ctx, cancel := context.WithTimeout(ctx, engineTimeout)
 	defer cancel()
 
-	// Cette marge "TTL * 2" n'est qu'un délai de grâce d'annulation coopératif
-	// pour les providers qui respectent leur contexte. Ce n'est pas une
-	// garantie de deadline dure : si un provider ignore son contexte, son
-	// goroutine peut encore bloquer wg.Wait() indéfiniment.
+	// This "TTL * 2" margin is only a cooperative cancellation grace
+	// period for providers that respect their context. It is not a
+	// hard deadline guarantee: if a provider ignores its context, its
+	// goroutine can still block wg.Wait() indefinitely.
 
 	var (
 		mu     sync.Mutex

@@ -21,7 +21,7 @@ func openTestStore(t *testing.T) *Store {
 func TestCookies_SaveAndLoadRoundTrip(t *testing.T) {
 	st := openTestStore(t)
 
-	// Aucun cookie encore stocké : LoadCookies doit renvoyer "" sans erreur.
+	// No cookies stored yet: LoadCookies must return "" without error.
 	got, err := st.LoadCookies("my-indexer", nil)
 	if err != nil {
 		t.Fatalf("LoadCookies (empty): %v", err)
@@ -42,7 +42,7 @@ func TestCookies_SaveAndLoadRoundTrip(t *testing.T) {
 		t.Fatalf("unexpected loaded cookies: %q", got)
 	}
 
-	// Upsert : une deuxième sauvegarde doit remplacer, pas dupliquer.
+	// Upsert: a second save must replace, not duplicate.
 	if err := st.SaveCookies("my-indexer", `[]`, nil); err != nil {
 		t.Fatalf("SaveCookies (update): %v", err)
 	}

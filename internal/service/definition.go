@@ -7,23 +7,23 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
-// DefinitionService gère les définitions Cardigann.
+// DefinitionService manages Cardigann definitions.
 type DefinitionService struct {
 	store *store.Store
 	cfg   config.Config
 }
 
-// NewDefinitionService crée un nouveau DefinitionService.
+// NewDefinitionService creates a new DefinitionService.
 func NewDefinitionService(st *store.Store, cfg config.Config) *DefinitionService {
 	return &DefinitionService{store: st, cfg: cfg}
 }
 
-// List retourne la liste des définitions en cache.
+// List returns the list of cached definitions.
 func (s *DefinitionService) List() ([]store.DefinitionMeta, error) {
 	return s.store.ListDefinitions("")
 }
 
-// Show retourne le YAML brut d'une définition.
+// Show returns the raw YAML of a definition.
 func (s *DefinitionService) Show(id string) (string, error) {
 	raw, _, err := s.store.GetDefinitionYAMLFallback(id)
 	if err != nil {
@@ -32,7 +32,7 @@ func (s *DefinitionService) Show(id string) (string, error) {
 	return raw, nil
 }
 
-// Sync synchronise les définitions depuis la source distante.
+// Sync synchronizes definitions from the remote source.
 func (s *DefinitionService) Sync() error {
 	return fmt.Errorf("sync not implemented in service layer — use cardigann-go directly")
 }

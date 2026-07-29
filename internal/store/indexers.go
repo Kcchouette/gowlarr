@@ -9,9 +9,9 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
-// IndexerConfig représente une instance configurée d'indexeur (association
-// d'une définition Cardigann en cache avec les identifiants/options de
-// l'utilisateur), persistée pour survivre entre invocations CLI.
+// IndexerConfig represents a configured indexer instance (association of a
+// cached Cardigann definition with user credentials/options), persisted to
+// survive between CLI invocations.
 type IndexerConfig struct {
 	ID           string
 	DefinitionID string
@@ -21,14 +21,14 @@ type IndexerConfig struct {
 	ProxyURL     string
 }
 
-// SaveIndexerConfig upsert une configuration d'indexeur.
-// Si key est non nil, les settings sont chiffrés en BLOB (settings_enc).
-// Sinon, ils restent en clair en TEXT (settings_json) pour rétrocompatibilité.
+// SaveIndexerConfig upserts an indexer configuration.
+// If key is non-nil, settings are encrypted into BLOB (settings_enc).
+// Otherwise, they remain plaintext in TEXT (settings_json) for backward compatibility.
 //
-// Note: dans l'état actuel de Gowlarr, les appels passent toujours key=nil :
-// settings_json (y compris d'éventuels identifiants d'indexeur) est donc
-// stocké en clair dans SQLite. L'infrastructure de chiffrement existe dans
-// internal/crypt mais n'est pas branchée par défaut.
+// Note: in Gowlarr's current state, callers always pass key=nil:
+// settings_json (including any indexer credentials) is therefore stored
+// in plaintext in SQLite. The encryption infrastructure exists in
+// internal/crypt but is not wired up by default.
 func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 	settingsJSON, err := json.Marshal(cfg.Settings)
 	if err != nil {
@@ -72,19 +72,19 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 	return nil
 }
 
-// GetIndexerConfig récupère une configuration d'indexeur par son ID.
+// GetIndexerConfig retrieves an indexer configuration by its ID.
 //
-// Note: tant que key reste nil côté appelant (cas actuel partout dans le
-// projet), les settings sont relus depuis settings_json en clair ; ne pas
-// supposer qu'un chiffrement actif protège déjà les credentials.
+// Note: as long as the caller passes key=nil (the current default everywhere
+// in the project), settings are read back from plaintext settings_json;
+// do not assume that active encryption already protects credentials.
 func (s *Store) GetIndexerConfig(id string, key []byte) (IndexerConfig, error) {
 	row := s.db.QueryRow(`SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url
 		FROM indexer_configs WHERE id = ?`, id)
 	return scanIndexerConfig(row, key)
 }
 
-// ListIndexerConfigs liste toutes les configurations, ou uniquement les
-// activées si onlyEnabled est vrai.
+// ListIndexerConfigs lists all configurations, or only enabled ones
+// if onlyEnabled is true.
 func (s *Store) ListIndexerConfigs(onlyEnabled bool, key []byte) ([]IndexerConfig, error) {
 	query := `SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url FROM indexer_configs`
 	if onlyEnabled {
@@ -109,7 +109,7 @@ func (s *Store) ListIndexerConfigs(onlyEnabled bool, key []byte) ([]IndexerConfi
 	return configs, rows.Err()
 }
 
-// DeleteIndexerConfig supprime une configuration d'indexeur.
+// DeleteIndexerConfig deletes an indexer configuration.
 func (s *Store) DeleteIndexerConfig(id string) error {
 	res, err := s.db.Exec(`DELETE FROM indexer_configs WHERE id = ?`, id)
 	if err != nil {
@@ -125,7 +125,7 @@ func (s *Store) DeleteIndexerConfig(id string) error {
 	return nil
 }
 
-// SetIndexerEnabled active/désactive une configuration d'indexeur existante.
+// SetIndexerEnabled enables or disables an existing indexer configuration.
 func (s *Store) SetIndexerEnabled(id string, enabled bool) error {
 	res, err := s.db.Exec(`UPDATE indexer_configs SET enabled = ?, updated_at = ? WHERE id = ?`,
 		boolToInt(enabled), time.Now().UTC().Format(time.RFC3339), id)

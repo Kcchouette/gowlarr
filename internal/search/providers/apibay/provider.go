@@ -1,9 +1,8 @@
-// Package providers/apibay implémente un provider torrent réel et sans
-// authentification, utilisé comme premier indexeur public de démonstration
-// pour la Slice A du MVP (avant que le moteur Cardigann complet — Slice B —
-// ne soit implémenté). Il interroge l'API JSON non-officielle "apibay"
-// (miroir de données The Pirate Bay), qui ne nécessite ni login ni
-// scraping HTML.
+// Package providers/apibay implements a real, unauthenticated torrent provider
+// used as the first public demo indexer for the MVP Slice A (before the full
+// Cardigann engine — Slice B — is implemented). It queries the unofficial
+// "apibay" JSON API (a Pirate Bay data mirror) that requires neither login
+// nor HTML scraping.
 package apibay
 
 import (
@@ -25,16 +24,16 @@ const (
 	maxAPIBayResponseSize = 32 << 20
 )
 
-// Provider interroge apibay.org (protocole torrent, indexeur public, sans login).
+// Provider queries apibay.org (torrent protocol, public indexer, no login).
 type Provider struct {
 	HTTPClient *http.Client
 	BaseURL    string
 }
 
-// New construit un provider apibay avec un client HTTP par défaut si aucun n'est fourni.
+// New builds an apibay provider with a default HTTP client if none is provided.
 func New() *Provider {
 	return &Provider{
-		HTTPClient: &http.Client{Timeout: 15 * time.Second}, // API JSON publique simple, timeout court pour rester réactif.
+		HTTPClient: &http.Client{Timeout: 15 * time.Second}, // Simple public JSON API, short timeout to stay responsive.
 		BaseURL:    defaultBaseURL,
 	}
 }
@@ -43,7 +42,7 @@ func (p *Provider) ID() string               { return "apibay" }
 func (p *Provider) Name() string             { return "The Pirate Bay (apibay)" }
 func (p *Provider) Protocol() model.Protocol { return model.ProtocolTorrent }
 
-// item représente un enregistrement brut de la réponse JSON apibay.
+// item represents a raw record from the apibay JSON response.
 type item struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
@@ -56,9 +55,9 @@ type item struct {
 	Category string `json:"category"`
 }
 
-// Search interroge apibay.org et normalise les résultats en model.ReleaseInfo.
-// Les liens de téléchargement sont reconstruits en magnet URI directement
-// (apibay ne fournit que le info_hash + nom, pas de page de détails scrapée).
+// Search queries apibay.org and normalizes results into model.ReleaseInfo.
+// Download links are reconstructed as magnet URIs directly (apibay only
+// provides info_hash + name, no scraped detail page).
 func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
 	if q.Keywords == "" {
 		return nil, fmt.Errorf("apibay requires non-empty keywords (no browse-all support)")
@@ -93,8 +92,8 @@ func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseI
 
 	releases := make([]model.ReleaseInfo, 0, len(items))
 	for _, it := range items {
-		// apibay renvoie un enregistrement factice {"id":"0", "name":"No results returned"}
-		// quand la recherche ne trouve rien.
+		// apibay returns a sentinel record {"id":"0", "name":"No results returned"}
+		// when the search finds nothing.
 		if it.ID == "0" || it.InfoHash == "0000000000000000000000000000000000000000" {
 			continue
 		}

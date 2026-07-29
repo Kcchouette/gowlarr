@@ -1,11 +1,11 @@
-// Package newznab implémente un client natif pour le protocole Newznab
-// générique (indexeurs usenet standard, hors moteur Cardigann). Il fait
-// partie du MVP (Slice F), à la demande explicite de l'utilisateur pour
-// conserver le support usenet de Prowlarr.
+// Package newznab implements a native client for the generic Newznab protocol
+// (standard usenet indexers, outside the Cardigann engine). It is part of the
+// MVP (Slice F), explicitly requested by the user to retain Prowlarr's usenet
+// support.
 //
-// Le "Usenet" de Prowlarr passe par des indexeurs Web qui exposent l'API
-// Newznab (HTTP/REST + RSS), jamais par une connexion NNTP directe — ce
-// module reste donc un simple client HTTP, pas un client NNTP.
+// Prowlarr's "Usenet" goes through web indexers that expose the Newznab API
+// (HTTP/REST + RSS), never through a direct NNTP connection — this module
+// remains a simple HTTP client, not an NNTP client.
 package newznab
 
 import (
@@ -22,7 +22,7 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// Client interroge un indexeur usenet parlant le protocole Newznab standard.
+// Client queries a usenet indexer speaking the standard Newznab protocol.
 type Client struct {
 	BaseURL     string
 	APIKey      string
@@ -31,14 +31,14 @@ type Client struct {
 	HTTPClient  *http.Client
 }
 
-// New construit un client Newznab générique.
+// New builds a generic Newznab client.
 func New(id, name, baseURL, apiKey string) *Client {
 	return &Client{
 		BaseURL:     strings.TrimRight(baseURL, "/"),
 		APIKey:      apiKey,
 		IndexerID:   id,
 		IndexerName: name,
-		HTTPClient:  &http.Client{Timeout: 20 * time.Second}, // Newznab répond normalement vite; 20s laisse une marge réseau sans bloquer l'UI trop longtemps.
+		HTTPClient:  &http.Client{Timeout: 20 * time.Second}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
 	}
 }
 
@@ -54,8 +54,8 @@ const (
 	SearchTypeBook     = "book"
 )
 
-// rssFeed / rssItem / rssAttr modélisent la réponse RSS 2.0 + extension
-// newznab:attr renvoyée par l'API Newznab (t=search|tvsearch|movie|music|book).
+// rssFeed / rssItem / rssAttr model the RSS 2.0 + newznab:attr extension
+// response returned by the Newznab API (t=search|tvsearch|movie|music|book).
 type rssFeed struct {
 	XMLName xml.Name `xml:"rss"`
 	Channel struct {
@@ -85,8 +85,8 @@ func (it rssItem) attr(name string) string {
 	return ""
 }
 
-// Search construit la requête avec le type de recherche approprié
-// et parse la réponse RSS + newznab:attr.
+// Search builds the request with the appropriate search type
+// and parses the RSS + newznab:attr response.
 func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
 	params := url.Values{}
 
@@ -174,8 +174,8 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 	return releases, nil
 }
 
-// parseRSSDate tente les formats de date usuels d'un flux RSS (RFC1123Z est
-// le format standard, mais certains indexeurs varient légèrement).
+// parseRSSDate attempts the usual RSS date formats (RFC1123Z is the
+// standard, but some indexers vary slightly).
 func parseRSSDate(raw string) time.Time {
 	layouts := []string{
 		time.RFC1123Z,

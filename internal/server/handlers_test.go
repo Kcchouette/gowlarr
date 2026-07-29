@@ -11,7 +11,7 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// fakeProvider implémente search.Provider pour les tests.
+// fakeProvider implements search.Provider for tests.
 type fakeProvider struct {
 	id       string
 	releases []model.ReleaseInfo
@@ -136,7 +136,7 @@ func TestRequireAPIKey(t *testing.T) {
 	ts := httptest.NewServer(srv.srv.Handler)
 	defer ts.Close()
 
-	// Sans clé
+	// Without key
 	resp, err := http.Get(ts.URL + "/api?t=caps")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -146,7 +146,7 @@ func TestRequireAPIKey(t *testing.T) {
 		t.Fatalf("expected 403 without API key, got %d", resp.StatusCode)
 	}
 
-	// Avec mauvaise clé
+	// With wrong key
 	resp, err = http.Get(ts.URL + "/api?t=caps&apikey=wrong")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -156,7 +156,7 @@ func TestRequireAPIKey(t *testing.T) {
 		t.Fatalf("expected 403 with wrong key, got %d", resp.StatusCode)
 	}
 
-	// Avec bonne clé
+	// With correct key
 	resp, err = http.Get(ts.URL + "/api?t=caps&apikey=my-secret-key")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

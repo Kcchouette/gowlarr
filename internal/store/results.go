@@ -9,11 +9,11 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/model"
 )
 
-// SaveResults persiste une liste de ReleaseInfo issues d'une recherche, avec
-// une durée d'expiration, afin que `gowlarr download <id>` fonctionne dans une
-// invocation CLI séparée de `gowlarr search` (les deux sont deux process
-// distincts : un état "en mémoire" ne survit pas entre les deux — correction
-// apportée suite à revue indépendante du plan).
+// SaveResults persists a list of ReleaseInfo from a search, with an
+// expiration duration, so that `gowlarr download <id>` works in a
+// separate CLI invocation from `gowlarr search` (the two are separate
+// processes: in-memory state does not survive between them — fix
+// following independent plan review).
 func (s *Store) SaveResults(results []model.ReleaseInfo, ttl time.Duration) ([]model.ReleaseInfo, error) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(ttl).Format(time.RFC3339)
@@ -65,7 +65,7 @@ func (s *Store) SaveResults(results []model.ReleaseInfo, ttl time.Duration) ([]m
 	return saved, nil
 }
 
-// GetResult récupère un résultat de recherche persisté par son ID, si non expiré.
+// GetResult retrieves a persisted search result by its ID, if not expired.
 func (s *Store) GetResult(id int64) (model.ReleaseInfo, error) {
 	row := s.db.QueryRow(`SELECT id, indexer_id, indexer_name, title, details_url,
 		download_link, info_hash, size_bytes, publish_date, seeders, peers, grabs,
@@ -103,7 +103,7 @@ func (s *Store) GetResult(id int64) (model.ReleaseInfo, error) {
 	return r, nil
 }
 
-// PurgeExpiredResults supprime les résultats de recherche expirés.
+// PurgeExpiredResults deletes expired search results.
 func (s *Store) PurgeExpiredResults() error {
 	_, err := s.db.Exec(`DELETE FROM search_results WHERE expires_at < ?`,
 		time.Now().UTC().Format(time.RFC3339))
