@@ -48,10 +48,6 @@ gowlarr defs list           # List available definitions
 gowlarr defs show <id>      # Show definition details
 ```
 
-`defs sync` also ingests repo-local definitions from `definitions-local/*.yml`
-(e.g. `japanfan`, `thelostspace`) as version `local`, so `indexer add` resolves
-them without any remote sync.
-
 ### Manage indexers
 
 ```bash
