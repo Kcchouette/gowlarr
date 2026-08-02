@@ -2,7 +2,6 @@ package store
 
 import (
 	"database/sql"
-	"errors"
 	"fmt"
 	"time"
 )
@@ -115,16 +114,32 @@ func (s *Store) ListDefinitionsWithYAML(version string) ([]DefinitionFull, error
 // versionsByPriority returns versions in priority order (v11 first, then v10-v1).
 var versionsByPriority = []string{"v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"}
 
-// GetDefinitionYAMLFallback searches for a definition starting from v11,
-// then falls back to earlier versions if not found.
+// GetDefinitionYAMLFallback returns the highest-priority version of a
+// definition (v11 first, then v10-v1) with a single indexed query (range
+// scan on the (id, version) unique index) instead of probing each version
+// individually.
 func (s *Store) GetDefinitionYAMLFallback(id string) (rawYAML, version string, err error) {
-	for _, v := range versionsByPriority {
-		raw, err := s.GetDefinitionYAML(id, v)
-		if err == nil {
-			return raw, v, nil
+	rows, err := s.db.Query(`SELECT raw_yaml, version FROM indexer_definitions WHERE id = ?`, id)
+	if err != nil {
+		return "", "", fmt.Errorf("listing definition versions for %q: %w", id, err)
+	}
+	defer rows.Close()
+
+	byVersion := make(map[string]string, 11)
+	for rows.Next() {
+		var raw, v string
+		if err := rows.Scan(&raw, &v); err != nil {
+			return "", "", fmt.Errorf("scanning definition version: %w", err)
 		}
-		if !errors.Is(err, ErrDefinitionNotFound) {
-			return "", "", err
+		byVersion[v] = raw
+	}
+	if err := rows.Err(); err != nil {
+		return "", "", fmt.Errorf("iterating definition versions for %q: %w", id, err)
+	}
+
+	for _, v := range versionsByPriority {
+		if raw, ok := byVersion[v]; ok {
+			return raw, v, nil
 		}
 	}
 	return "", "", fmt.Errorf("%w: definition %q not found in any version", ErrDefinitionNotFound, id)

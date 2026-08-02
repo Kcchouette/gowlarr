@@ -30,10 +30,21 @@ type Provider struct {
 	BaseURL    string
 }
 
+// sharedTransport is a tuned transport shared by all apibay clients:
+// it keeps idle connections alive and pooled instead of relying on
+// http.DefaultTransport's tight per-host limit. Proxy: ProxyFromEnvironment
+// preserves the default transport's env-var proxy behavior.
+var sharedTransport = &http.Transport{
+	Proxy:              http.ProxyFromEnvironment,
+	MaxIdleConns:       100,
+	MaxIdleConnsPerHost: 10,
+	IdleConnTimeout:     90 * time.Second,
+}
+
 // New builds an apibay provider with a default HTTP client if none is provided.
 func New() *Provider {
 	return &Provider{
-		HTTPClient: &http.Client{Timeout: 15 * time.Second}, // Simple public JSON API, short timeout to stay responsive.
+		HTTPClient: &http.Client{Timeout: 15 * time.Second, Transport: sharedTransport}, // Simple public JSON API, short timeout to stay responsive.
 		BaseURL:    defaultBaseURL,
 	}
 }

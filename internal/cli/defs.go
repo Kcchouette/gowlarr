@@ -2,6 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/Kcchouette/cardigann-go/definition"
 	"github.com/Kcchouette/cardigann-go/defs"
@@ -28,13 +31,16 @@ func newDefsSyncCmd() *cobra.Command {
 		Use:   "sync",
 		Short: "Download/update Cardigann definitions from GitHub",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, _, err := openStore()
+			st, cfg, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer st.Close()
 
 			fetcher := defs.NewFetcher()
+			if etag := loadStoredETag(cfg.DefsCacheDir); etag != "" {
+				fetcher.SetIfNoneMatch(etag)
+			}
 
 			var raws []defs.RawDefinition
 			if version != "" {
@@ -48,6 +54,12 @@ func newDefsSyncCmd() *cobra.Command {
 					return fmt.Errorf("synchronizing definitions: %w", err)
 				}
 			}
+
+			if fetcher.NotModified() {
+				fmt.Println("Definitions already up to date.")
+				return nil
+			}
+			storeETag(cfg.DefsCacheDir, fetcher.LastETag())
 
 			for _, raw := range raws {
 				v := raw.Version
@@ -146,4 +158,42 @@ func methodOrNone(method string) string {
 		return "(none)"
 	}
 	return method
+}
+
+// etagFilePath returns the path of the persisted defs ETag file, or "" when
+// the cache dir is unset (no persistence).
+func etagFilePath(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, ".defs-etag")
+}
+
+// loadStoredETag reads the ETag persisted by the previous sync ("" if none).
+func loadStoredETag(dir string) string {
+	path := etagFilePath(dir)
+	if path == "" {
+		return ""
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+// storeETag persists the last ETag so the next sync can send If-None-Match
+// (best effort: failures are ignored — the sync still works without it).
+func storeETag(dir string, etag string) {
+	if etag == "" {
+		return
+	}
+	path := etagFilePath(dir)
+	if path == "" {
+		return
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	_ = os.WriteFile(path, []byte(etag), 0o600)
 }

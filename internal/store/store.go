@@ -33,7 +33,8 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("creating database dir: %w", err)
 	}
 
-	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)", path)
+	dsn := fmt.Sprintf("file:%s?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)&_pragma=journal_mode(WAL)"+
+		"&_pragma=synchronous(NORMAL)&_pragma=cache_size(-16384)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("opening sqlite database %s: %w", path, err)

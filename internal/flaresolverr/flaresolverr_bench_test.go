@@ -38,16 +38,16 @@ func BenchmarkIsCloudflareChallenge_10MiB(b *testing.B) {
 	}
 }
 
-// BenchmarkRoundTrip_BuffersBody measures the full-body buffering done on
-// every response (readAllBounded up to 10 MiB) with a 1 MiB body, including
-// the reconstruction of the response with the buffered bytes.
+// BenchmarkRoundTrip_BuffersBody measures the 503-path full-body buffering
+// (readAllBounded up to 10 MiB) with a 1 MiB body. The response is closed
+// WITHOUT being read by the caller, isolating the transport's own buffering.
 func BenchmarkRoundTrip_BuffersBody(b *testing.B) {
 	body := make([]byte, 1<<20)
 	for i := range body {
 		body[i] = 'x'
 	}
 	t := &FlareSolverrTransport{
-		Base:          &fakeRoundTripper{status: http.StatusOK, body: body},
+		Base:          &fakeRoundTripper{status: http.StatusServiceUnavailable, body: body},
 		SkipValidator: true, // avoid URL validation in the hot loop
 	}
 	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/", nil)
@@ -61,13 +61,33 @@ func BenchmarkRoundTrip_BuffersBody(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		got, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
+	}
+}
+
+// BenchmarkRoundTrip_PassThrough_Non503 measures the non-503 path: the body
+// must pass through untouched (no buffering), so the per-request allocation
+// collapses versus the buffered path (BenchmarkRoundTrip_BuffersBody).
+func BenchmarkRoundTrip_PassThrough_Non503(b *testing.B) {
+	body := make([]byte, 1<<20)
+	for i := range body {
+		body[i] = 'x'
+	}
+	t := &FlareSolverrTransport{
+		Base:          &trackingRoundTripper{status: http.StatusOK, body: body},
+		SkipValidator: true,
+	}
+	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/", nil)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		resp, err := t.RoundTrip(req)
 		if err != nil {
 			b.Fatal(err)
 		}
-		if len(got) != len(body) {
-			b.Fatalf("expected %d bytes, got %d", len(body), len(got))
-		}
+		resp.Body.Close()
 	}
 }

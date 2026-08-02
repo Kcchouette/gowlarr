@@ -1,12 +1,64 @@
 package flaresolverr
 
 import (
+	"bytes"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// countingReadCloser wraps a reader and counts Read calls, so tests can
+// assert whether RoundTrip buffered the body or passed it through untouched.
+type countingReadCloser struct {
+	r        io.Reader
+	readCalls int
+}
+
+func (c *countingReadCloser) Read(p []byte) (int, error) {
+	c.readCalls++
+	return c.r.Read(p)
+}
+
+func (c *countingReadCloser) Close() error { return nil }
+
+// trackingRoundTripper returns a canned response whose body counts reads.
+type trackingRoundTripper struct {
+	status int
+	body   []byte
+}
+
+func (f *trackingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{
+		StatusCode: f.status,
+		Body:       &countingReadCloser{r: bytes.NewReader(f.body)},
+		Header:     make(http.Header),
+	}, nil
+}
+
+// TestTransport_Non503PassThrough verifies that non-503 responses are NOT
+// buffered: the challenge scan can only trigger on 503, so reading the body
+// of a regular response is pure waste (up to 10 MiB per request).
+func TestTransport_Non503PassThrough(t *testing.T) {
+	base := &trackingRoundTripper{status: 200, body: bytes.Repeat([]byte("x"), 1<<20)}
+	transport := &FlareSolverrTransport{Base: base, SkipValidator: true}
+
+	req, err := http.NewRequest(http.MethodGet, "https://example.invalid/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := transport.RoundTrip(req)
+	if err != nil {
+		t.Fatalf("RoundTrip: %v", err)
+	}
+	defer resp.Body.Close()
+
+	rc := resp.Body.(*countingReadCloser)
+	if rc.readCalls != 0 {
+		t.Fatalf("expected the 200 body to pass through untouched (0 reads), got %d reads", rc.readCalls)
+	}
+}
 
 func TestTransport_NoFallback(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

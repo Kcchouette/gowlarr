@@ -31,6 +31,17 @@ type Client struct {
 	HTTPClient  *http.Client
 }
 
+// sharedTransport is a tuned transport shared by all Newznab clients:
+// it keeps idle connections alive and pooled instead of relying on
+// http.DefaultTransport's tight per-host limit. Proxy: ProxyFromEnvironment
+// preserves the default transport's env-var proxy behavior.
+var sharedTransport = &http.Transport{
+	Proxy:              http.ProxyFromEnvironment,
+	MaxIdleConns:       100,
+	MaxIdleConnsPerHost: 10,
+	IdleConnTimeout:     90 * time.Second,
+}
+
 // New builds a generic Newznab client.
 func New(id, name, baseURL, apiKey string) *Client {
 	return &Client{
@@ -38,7 +49,7 @@ func New(id, name, baseURL, apiKey string) *Client {
 		APIKey:      apiKey,
 		IndexerID:   id,
 		IndexerName: name,
-		HTTPClient:  &http.Client{Timeout: 20 * time.Second}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
+		HTTPClient:  &http.Client{Timeout: 20 * time.Second, Transport: sharedTransport}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
 	}
 }
 
@@ -175,13 +186,15 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 }
 
 // parseRSSDate attempts the usual RSS date formats (RFC1123Z is the
-// standard, but some indexers vary slightly).
+// standard, but some indexers vary slightly). RFC3339 is tried early because
+// it is common in modern feeds; the formats are disjoint so the order is
+// semantically irrelevant, only a matter of average attempt count.
 func parseRSSDate(raw string) time.Time {
 	layouts := []string{
 		time.RFC1123Z,
 		time.RFC1123,
-		"Mon, 2 Jan 2006 15:04:05 -0700",
 		time.RFC3339,
+		"Mon, 2 Jan 2006 15:04:05 -0700",
 	}
 	for _, layout := range layouts {
 		if t, err := time.Parse(layout, raw); err == nil {

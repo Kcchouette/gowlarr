@@ -3,6 +3,7 @@ package search
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -118,5 +119,89 @@ func TestEngine_PerProviderTimeout(t *testing.T) {
 	result := engine.Search(context.Background(), Query{Keywords: "x"})
 	if len(result.Errors) != 1 {
 		t.Fatalf("expected timeout error, got errors=%v releases=%v", result.Errors, result.Releases)
+	}
+}
+
+// hangingProvider ignores its context and never returns, simulating a
+// provider whose underlying HTTP stack is stuck.
+type hangingProvider struct{ id string }
+
+func (h *hangingProvider) ID() string               { return h.id }
+func (h *hangingProvider) Name() string             { return h.id }
+func (h *hangingProvider) Protocol() model.Protocol { return model.ProtocolTorrent }
+func (h *hangingProvider) Search(context.Context, Query) ([]model.ReleaseInfo, error) {
+	select {} // never returns, ignores ctx
+}
+
+func TestEngine_ReturnsOnDeadline_EvenIfProviderHangs(t *testing.T) {
+	fast := &fakeProvider{id: "fast", releases: []model.ReleaseInfo{{Title: "OK"}}}
+	engine := NewEngine([]Provider{fast, &hangingProvider{id: "hung"}})
+	engine.PerProviderTTL = 100 * time.Millisecond // engine deadline = 200ms
+
+	start := time.Now()
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	elapsed := time.Since(start)
+
+	if elapsed > time.Second {
+		t.Fatalf("Search did not return on deadline (took %v)", elapsed)
+	}
+	if len(result.Releases) != 1 || result.Releases[0].Title != "OK" {
+		t.Errorf("expected the fast provider's release, got %+v", result.Releases)
+	}
+	// The hung provider produced no error (it never returned); that is the
+	// documented tradeoff of a bounded aggregation.
+}
+
+func TestEngine_CapsResultsPerProvider(t *testing.T) {
+	releases := make([]model.ReleaseInfo, 0, 150)
+	for i := 0; i < 150; i++ {
+		releases = append(releases, model.ReleaseInfo{
+			Title:   fmt.Sprintf("R%d", i),
+			InfoHash: fmt.Sprintf("%040d", i),
+		})
+	}
+	engine := NewEngine([]Provider{&fakeProvider{id: "p", releases: releases}})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != defaultMaxResultsPerProvider {
+		t.Fatalf("expected %d capped releases, got %d", defaultMaxResultsPerProvider, len(result.Releases))
+	}
+}
+
+func TestEngine_DedupsByInfoHash(t *testing.T) {
+	dup := model.ReleaseInfo{Title: "Dup", InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	p1 := &fakeProvider{id: "p1", releases: []model.ReleaseInfo{dup}}
+	p2 := &fakeProvider{id: "p2", releases: []model.ReleaseInfo{dup}}
+	engine := NewEngine([]Provider{p1, p2})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 1 {
+		t.Fatalf("expected 1 release after infohash dedup, got %d", len(result.Releases))
+	}
+}
+
+func TestEngine_DedupsByDownloadLink(t *testing.T) {
+	dup := model.ReleaseInfo{Title: "Dup", DownloadLink: "https://example.invalid/dl/1.torrent"}
+	p1 := &fakeProvider{id: "p1", releases: []model.ReleaseInfo{dup}}
+	p2 := &fakeProvider{id: "p2", releases: []model.ReleaseInfo{dup}}
+	engine := NewEngine([]Provider{p1, p2})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 1 {
+		t.Fatalf("expected 1 release after link dedup, got %d", len(result.Releases))
+	}
+}
+
+func TestEngine_KeepsUnkeyableDuplicates(t *testing.T) {
+	// Releases with neither InfoHash nor DownloadLink cannot be deduped and
+	// must both be kept.
+	rel := model.ReleaseInfo{Title: "NoKey"}
+	p1 := &fakeProvider{id: "p1", releases: []model.ReleaseInfo{rel}}
+	p2 := &fakeProvider{id: "p2", releases: []model.ReleaseInfo{rel}}
+	engine := NewEngine([]Provider{p1, p2})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 2 {
+		t.Fatalf("expected both unkeyable releases kept, got %d", len(result.Releases))
 	}
 }

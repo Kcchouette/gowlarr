@@ -70,6 +70,7 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 	}
 
 	engine := search.NewEngine(providers)
+	engine.MaxResultsPerProvider = s.cfg.MaxResultsPerIndexer // 0 -> default (10) inside Search
 	result := engine.Search(ctx, search.Query{
 		Keywords:   params.Keywords,
 		Categories: params.Categories,

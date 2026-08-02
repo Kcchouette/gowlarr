@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/Kcchouette/cardigann-go/definition"
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	"github.com/Kcchouette/cardigann-go/httpclient"
 
@@ -40,7 +39,7 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			slog.Warn("indexer: definition not found", "id", idxCfg.ID, "err", err)
 			continue
 		}
-		def, err := definition.Parse([]byte(raw))
+		def, err := parseDefinition(raw)
 		if err != nil {
 			slog.Warn("indexer: parsing definition", "id", idxCfg.ID, "err", err)
 			continue
@@ -85,7 +84,7 @@ func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.Index
 }
 
 func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, raw string) (search.Provider, error) {
-	def, err := definition.Parse([]byte(raw))
+	def, err := parseDefinition(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parsing definition: %w", err)
 	}

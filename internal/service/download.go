@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kcchouette/cardigann-go/definition"
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	"github.com/Kcchouette/cardigann-go/httpclient"
 
@@ -74,7 +73,7 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		return defaultClient, nil
 	}
 
-	def, err := definition.Parse([]byte(raw))
+	def, err := parseDefinition(raw)
 	if err != nil {
 		slog.Warn("download: parsing indexer definition, falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
 		return defaultClient, nil

@@ -57,6 +57,7 @@ for integration with Sonarr, Radarr, or any other compatible client.`,
 			}
 
 			engine := search.NewEngine(providers)
+			engine.MaxResultsPerProvider = cfg.MaxResultsPerIndexer // 0 -> default (10) inside Search
 			srv := server.New(addr, apiKey, corsOrigin, engine, st)
 
 			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

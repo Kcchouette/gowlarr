@@ -35,7 +35,7 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 	if err != nil {
 		return err
 	}
-	def, err := definition.Parse([]byte(raw))
+	def, err := parseDefinition(raw)
 	if err != nil {
 		return fmt.Errorf("parsing definition: %w", err)
 	}
@@ -127,7 +127,7 @@ func (s *IndexerService) ResolveDefinition(query string, version string) ([]Reso
 	var results []ResolvedDefinition
 
 	for _, d := range defs {
-		def, err := definition.Parse([]byte(d.YAML))
+		def, err := parseDefinition(d.YAML)
 		if err != nil {
 			continue
 		}

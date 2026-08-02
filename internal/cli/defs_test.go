@@ -2,9 +2,48 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestETagFileHelpers(t *testing.T) {
+	dir := t.TempDir()
+
+	// Empty dir -> no persistence.
+	if p := etagFilePath(""); p != "" {
+		t.Errorf("expected empty path for empty dir, got %q", p)
+	}
+	if loadStoredETag("") != "" {
+		t.Error("expected no ETag for empty dir")
+	}
+	storeETag("", `"etag-1"`) // must not panic or create anything
+
+	// Roundtrip.
+	storeETag(dir, `"etag-1"`)
+	if got := loadStoredETag(dir); got != `"etag-1"` {
+		t.Errorf("expected stored ETag %q, got %q", `"etag-1"`, got)
+	}
+
+	// Overwrite.
+	storeETag(dir, `"etag-2"`)
+	if got := loadStoredETag(dir); got != `"etag-2"` {
+		t.Errorf("expected overwritten ETag %q, got %q", `"etag-2"`, got)
+	}
+
+	// Missing file -> "".
+	if got := loadStoredETag(filepath.Join(t.TempDir(), "nope")); got != "" {
+		t.Errorf("expected empty ETag for missing file, got %q", got)
+	}
+
+	// Created file exists with restrictive mode.
+	if info, err := os.Stat(filepath.Join(dir, ".defs-etag")); err != nil {
+		t.Fatalf("expected .defs-etag to exist: %v", err)
+	} else if info.Mode().Perm() != 0o600 {
+		t.Errorf("expected 0600 mode, got %v", info.Mode().Perm())
+	}
+}
 
 func TestDefsSyncCmdDefaultVersionIsEmpty(t *testing.T) {
 	cmd := newDefsSyncCmd()

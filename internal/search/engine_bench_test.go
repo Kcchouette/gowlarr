@@ -26,6 +26,7 @@ func BenchmarkEngineSearch_N10(b *testing.B) {
 		providers = append(providers, &fakeProvider{id: fmt.Sprintf("p%d", i), releases: releases})
 	}
 	engine := NewEngine(providers)
+	engine.MaxResultsPerProvider = 20 // keep the 200-release semantics (10x20); the bench measures aggregation, not the cap
 	ctx := context.Background()
 	q := Query{Keywords: "ubuntu"}
 

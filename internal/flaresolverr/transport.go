@@ -37,6 +37,14 @@ func (t *FlareSolverrTransport) RoundTrip(req *http.Request) (*http.Response, er
 		return nil, err
 	}
 
+	// The challenge scan can only trigger on 503 (IsCloudflareChallenge gates
+	// on that status), so buffering any other response is pure waste (up to
+	// 10 MiB per request). Pass the body through untouched; the caller reads
+	// and closes it.
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		return resp, nil
+	}
+
 	// Read body to check for Cloudflare challenge
 	body, err := readAllBounded(resp.Body, maxBufferedResponseBodySize)
 	resp.Body.Close()

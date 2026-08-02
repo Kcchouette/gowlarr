@@ -22,6 +22,9 @@ type Config struct {
 	HTTPProxy string `json:"http_proxy,omitempty"`
 	// FlareSolverrURL is the FlareSolverr service URL (optional, post-MVP).
 	FlareSolverrURL string `json:"flaresolverr_url,omitempty"`
+	// MaxResultsPerIndexer caps the number of results a single indexer can
+	// contribute to a search (0 = default of 10).
+	MaxResultsPerIndexer int `json:"max_results_per_indexer,omitempty"`
 }
 
 // Dir returns Gowlarr's config directory, using OS conventions
