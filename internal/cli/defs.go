@@ -71,6 +71,19 @@ func newDefsSyncCmd() *cobra.Command {
 						return err
 					}
 				}
+
+				if version != "" {
+					fmt.Printf("%d definition(s) %s synchronized.\n", len(raws), version)
+				} else {
+					byVersion := make(map[string]int)
+					for _, raw := range raws {
+						byVersion[raw.Version]++
+					}
+					for v, count := range byVersion {
+						fmt.Printf("%d definition(s) %s synchronized.\n", count, v)
+					}
+					fmt.Printf("Total: %d definition(s) across %d version(s).\n", len(raws), len(byVersion))
+				}
 			}
 
 			// Repo-local definitions (definitions-local/*.yml) are ingested
@@ -82,19 +95,6 @@ func newDefsSyncCmd() *cobra.Command {
 			}
 			if localCount > 0 {
 				fmt.Printf("%d local definition(s) ingested from definitions-local/.\n", localCount)
-			}
-
-			if version != "" {
-				fmt.Printf("%d definition(s) %s synchronized.\n", len(raws), version)
-			} else {
-				byVersion := make(map[string]int)
-				for _, raw := range raws {
-					byVersion[raw.Version]++
-				}
-				for v, count := range byVersion {
-					fmt.Printf("%d definition(s) %s synchronized.\n", count, v)
-				}
-				fmt.Printf("Total: %d definition(s) across %d version(s).\n", len(raws), len(byVersion))
 			}
 			return nil
 		},
