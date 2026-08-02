@@ -20,6 +20,10 @@ type Config struct {
 	LogLevel string `json:"log_level"`
 	// HTTPProxy is a default HTTP proxy (optional, can be overridden per indexer).
 	HTTPProxy string `json:"http_proxy,omitempty"`
+	// DNSOverrides maps hostnames to fixed IP addresses, applied at dial time
+	// (equivalent to curl's --resolve). Useful when the system DNS cannot
+	// resolve a configured indexer domain.
+	DNSOverrides map[string]string `json:"dns_overrides,omitempty"`
 	// FlareSolverrURL is the FlareSolverr service URL (optional, post-MVP).
 	FlareSolverrURL string `json:"flaresolverr_url,omitempty"`
 	// MaxResultsPerIndexer caps the number of results a single indexer can

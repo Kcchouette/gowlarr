@@ -5,6 +5,7 @@ package service
 import (
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	"github.com/Kcchouette/cardigann-go/httpclient"
@@ -12,9 +13,28 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/cardigannadapter"
 	"github.com/Kcchouette/gowlarr/internal/config"
 	"github.com/Kcchouette/gowlarr/internal/flaresolverr"
+	"github.com/Kcchouette/gowlarr/internal/netutil"
 	"github.com/Kcchouette/gowlarr/internal/search"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
+
+// applyDNSOverrides clones the client's transport with a DialContext that
+// forces DNS resolution of the overridden hostnames to fixed IPs (equivalent
+// to curl's --resolve). It only acts when overrides are non-empty and the
+// transport is a plain *http.Transport; otherwise it leaves the client
+// untouched (FlareSolverr wraps the transport afterwards when configured).
+func applyDNSOverrides(client *httpclient.IndexerClient, overrides map[string]string) {
+	if len(overrides) == 0 {
+		return
+	}
+	tr, ok := client.HTTPClient().Transport.(*http.Transport)
+	if !ok {
+		return
+	}
+	cloned := tr.Clone()
+	cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
+	client.HTTPClient().Transport = cloned
+}
 
 // BuildConfiguredProviders builds a Cardigann search.Provider for each
 // enabled indexer, with authenticated session if the definition requires it.
@@ -59,6 +79,10 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			continue
 		}
 
+		// Force DNS resolution of overridden hostnames before the
+		// FlareSolverr transport wraps the underlying transport.
+		applyDNSOverrides(client, cfg.DNSOverrides)
+
 		// Inject FlareSolverr transport if configured
 		if flareClient != nil {
 			transport := &flaresolverr.FlareSolverrTransport{
@@ -100,6 +124,8 @@ func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg stor
 	if err != nil {
 		return nil, fmt.Errorf("building http client: %w", err)
 	}
+
+	applyDNSOverrides(client, appCfg.DNSOverrides)
 
 	return cardigannadapter.NewProvider(
 		cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)), nil

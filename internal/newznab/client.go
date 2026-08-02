@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
+	"github.com/Kcchouette/gowlarr/internal/netutil"
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
@@ -44,12 +45,25 @@ var sharedTransport = &http.Transport{
 
 // New builds a generic Newznab client.
 func New(id, name, baseURL, apiKey string) *Client {
+	return NewWithOverrides(id, name, baseURL, apiKey, nil)
+}
+
+// NewWithOverrides builds a generic Newznab client, optionally forcing DNS
+// resolution of specific hostnames to fixed IPs (equivalent to curl's
+// --resolve). A nil or empty overrides map behaves exactly like New.
+func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]string) *Client {
+	transport := sharedTransport
+	if len(overrides) > 0 {
+		cloned := sharedTransport.Clone()
+		cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
+		transport = cloned
+	}
 	return &Client{
 		BaseURL:     strings.TrimRight(baseURL, "/"),
 		APIKey:      apiKey,
 		IndexerID:   id,
 		IndexerName: name,
-		HTTPClient:  &http.Client{Timeout: 20 * time.Second, Transport: sharedTransport}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
+		HTTPClient:  &http.Client{Timeout: 20 * time.Second, Transport: transport}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
 	}
 }
 

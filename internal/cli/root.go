@@ -9,6 +9,7 @@ import (
 
 	"github.com/Kcchouette/gowlarr/internal/config"
 	golog "github.com/Kcchouette/gowlarr/internal/log"
+	"github.com/Kcchouette/gowlarr/internal/netutil"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
@@ -60,6 +61,9 @@ func openStore() (*store.Store, config.Config, error) {
 	if err != nil {
 		return nil, config.Config{}, fmt.Errorf("loading config: %w", err)
 	}
+	// Install DNS overrides globally so SSRF validation (netutil.ValidateURL)
+	// resolves overridden hostnames before the dial.
+	netutil.SetDNSOverrides(cfg.DNSOverrides)
 	st, err := store.Open(cfg.DatabasePath)
 	if err != nil {
 		return nil, config.Config{}, fmt.Errorf("opening store: %w", err)

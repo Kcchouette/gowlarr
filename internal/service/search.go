@@ -66,7 +66,7 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 			if name == "" {
 				name = "newznab-generic"
 			}
-			providers = append(providers, newznab.New(name, name, params.NewznabURL, params.NewznabAPIKey))
+			providers = append(providers, newznab.NewWithOverrides(name, name, params.NewznabURL, params.NewznabAPIKey, s.cfg.DNSOverrides))
 		}
 	} else {
 		// No generic providers when a specific indexer is targeted.
