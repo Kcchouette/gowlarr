@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/Kcchouette/cardigann-go/definition"
 	"github.com/spf13/cobra"
 
 	"github.com/Kcchouette/gowlarr/internal/service"
@@ -89,7 +90,42 @@ or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
 			}
 			fmt.Printf("Resolved %q → definition %q (%s)\n", args[0], defID, best.Name)
 
-			if err := svc.Add(defID, instanceID, version, proxyURL, settingsMap); err != nil {
+			// Load the definition with exactly the version the service will
+			// persist (best.Version), so the prompted settings match what
+			// the engine sees.
+			raw, err := st.GetDefinitionYAML(defID, best.Version)
+			if err != nil {
+				return err
+			}
+			def, err := definition.Parse([]byte(raw))
+			if err != nil {
+				return fmt.Errorf("parsing definition %q: %w", defID, err)
+			}
+
+			missing := requiredSettings(def, settingsMap)
+			errw := cmd.ErrOrStderr() // prompts and summary are diagnostics: keep stdout clean
+			if len(missing) > 0 && !stdinIsTerminal() {
+				names := make([]string, 0, len(missing))
+				for _, s := range missing {
+					names = append(names, s.Name)
+				}
+				// The definition's info texts are the help the user needs
+				// (e.g. where to find the API key) — show them in the error.
+				for _, s := range def.Settings {
+					if s.Type == "info" && s.Default != "" {
+						fmt.Fprintln(errw, s.Default)
+					}
+				}
+				return fmt.Errorf("definition %q requires settings: %s (provide them with --setting key=value)", defID, strings.Join(names, ", "))
+			}
+			if len(missing) > 0 {
+				if settingsMap, err = runPrompts(def, settingsMap, newStdinPrompter(errw), errw); err != nil {
+					return err
+				}
+			}
+			printSettingsSummary(def, settingsMap, errw)
+
+			if err := svc.Add(defID, instanceID, best.Version, proxyURL, settingsMap); err != nil {
 				return err
 			}
 

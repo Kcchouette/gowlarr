@@ -340,3 +340,154 @@ func TestPrintSettingsSummary(t *testing.T) {
 		}
 	})
 }
+
+const needsCredsYAML = `id: needs-creds
+name: Needs Creds
+description: interactive add test
+language: en-US
+type: private
+links:
+  - https://needs-creds.example.com
+settings:
+  - name: username
+    type: text
+    label: Username
+  - name: password
+    type: password
+    label: Password
+  - name: info_key
+    type: info
+    label: About your API key
+    default: "Find your API key on the Parameters page."
+search:
+  paths:
+    - path: /search
+      response:
+        type: html
+  rows:
+    selector: tr
+  fields:
+    title:
+      selector: a
+`
+
+// TestIndexerAddCmdNonTTYMissingSettings covers the non-interactive guard:
+// with stdin not a terminal and required settings missing, add fails with a
+// --setting hint (plus the definition's info help) and persists nothing.
+func TestIndexerAddCmdNonTTYMissingSettings(t *testing.T) {
+	isolateCLIUserDirs(t)
+	writeCLIConfig(t)
+
+	st, _, err := openStore()
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	if err := st.SaveDefinition("needs-creds", "v11", "sha", needsCredsYAML); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	st.Close()
+
+	// Force stdin to a pipe: the real term.IsTerminal path returns false.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	oldStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		_ = r.Close()
+		_ = w.Close()
+	})
+
+	var errBuf bytes.Buffer
+	cmd := newIndexerAddCmd()
+	cmd.SetArgs([]string{"needs-creds"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(&errBuf)
+	err = cmd.Execute()
+	if err == nil {
+		t.Fatal("expected missing-settings error, got nil")
+	}
+	for _, want := range []string{"requires settings", "username", "password", "--setting"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error missing %q: %v", want, err)
+		}
+	}
+	// The definition's info help is printed on stderr (the error message
+	// carries the keys and the hint).
+	if !strings.Contains(errBuf.String(), "Parameters page") {
+		t.Errorf("info help missing on stderr: %q", errBuf.String())
+	}
+
+	// Nothing must have been persisted.
+	st2, _, err := openStore()
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer st2.Close()
+	cfgs, err := st2.ListIndexerConfigs(false, nil)
+	if err != nil {
+		t.Fatalf("ListIndexerConfigs: %v", err)
+	}
+	if len(cfgs) != 0 {
+		t.Errorf("indexer persisted despite the error: %+v", cfgs)
+	}
+}
+
+// TestIndexerAddCmdInteractiveFillsSettings covers the interactive path: the
+// fake prompter answers the required settings, the summary prints on stderr,
+// and the merged settings are persisted.
+func TestIndexerAddCmdInteractiveFillsSettings(t *testing.T) {
+	isolateCLIUserDirs(t)
+	writeCLIConfig(t)
+
+	st, _, err := openStore()
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	if err := st.SaveDefinition("needs-creds", "v11", "sha", needsCredsYAML); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	st.Close()
+
+	oldTTY, oldNew := stdinIsTerminal, newStdinPrompter
+	stdinIsTerminal = func() bool { return true }
+	newStdinPrompter = func(w io.Writer) prompter {
+		return &fakePrompter{answers: []string{"alice", "s3cret"}}
+	}
+	t.Cleanup(func() { stdinIsTerminal, newStdinPrompter = oldTTY, oldNew })
+
+	var errBuf bytes.Buffer
+	cmd := newIndexerAddCmd()
+	cmd.SetArgs([]string{"needs-creds"})
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(&errBuf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// The summary goes to stderr with the password masked.
+	if !strings.Contains(errBuf.String(), "Settings to save:") {
+		t.Errorf("summary missing on stderr: %q", errBuf.String())
+	}
+	if strings.Contains(errBuf.String(), "s3cret") {
+		t.Errorf("password leaked in summary: %q", errBuf.String())
+	}
+
+	st2, _, err := openStore()
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer st2.Close()
+	cfgs, err := st2.ListIndexerConfigs(false, nil)
+	if err != nil {
+		t.Fatalf("ListIndexerConfigs: %v", err)
+	}
+	if len(cfgs) != 1 {
+		t.Fatalf("expected 1 persisted indexer, got %d", len(cfgs))
+	}
+	if cfgs[0].Settings["username"] != "alice" || cfgs[0].Settings["password"] != "s3cret" {
+		t.Errorf("persisted settings = %v, want username=alice password=s3cret", cfgs[0].Settings)
+	}
+}
