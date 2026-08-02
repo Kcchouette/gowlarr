@@ -80,10 +80,7 @@ func BenchmarkBuildMagnet_Inline(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(names); j++ {
-			magnet := fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s", hashes[j], url.QueryEscape(names[j]))
-			if magnet == "" {
-				b.Fatal("empty magnet")
-			}
+			_ = fmt.Sprintf("magnet:?xt=urn:btih:%s&dn=%s", hashes[j], url.QueryEscape(names[j]))
 		}
 	}
 }

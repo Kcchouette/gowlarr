@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,15 +138,20 @@ func BenchmarkGetDefinitionYAMLFallback_MissAll(b *testing.B) {
 
 // BenchmarkCookiePersist_Roundtrip measures the SQLite-backed cookie
 // persister (Store + Load of a ~40-cookie blob) via the adapter used by
-// cardigann-go.
+// cardigann-go. The blob is well-formed JSON (as produced by the jar).
 func BenchmarkCookiePersist_Roundtrip(b *testing.B) {
 	st := benchOpen(b)
 	adapter := NewCookiePersisterAdapter(st, nil)
-	data := `[{"url":"https://a.invalid/","cookies":[{`
+	var sb strings.Builder
+	sb.WriteString(`[{"url":"https://a.invalid/","cookies":[{`)
 	for i := 0; i < 40; i++ {
-		data += fmt.Sprintf(`"c%d":"v%d",`, i, i)
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, `"c%d":"v%d"`, i, i)
 	}
-	data += `}]}]`
+	sb.WriteString(`}]}]`)
+	data := sb.String()
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
