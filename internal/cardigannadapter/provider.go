@@ -70,6 +70,9 @@ func ToReleaseInfo(r cardigannrelease.Release) model.ReleaseInfo {
 		Protocol:     toModelProtocol(r.Protocol, r.IndexerID, r.IndexerName),
 		IndexerID:    r.IndexerID,
 		IndexerName:  r.IndexerName,
+		Hosts:        append([]string(nil), r.Hosts...),
+		Unlocked:     r.Unlocked,
+		StreamURL:    r.StreamURL,
 	}
 }
 
@@ -79,6 +82,10 @@ func toModelProtocol(protocol cardigannrelease.Protocol, indexerID, indexerName 
 		return model.ProtocolUsenet
 	case cardigannrelease.ProtocolTorrent:
 		return model.ProtocolTorrent
+	case cardigannrelease.ProtocolDDL:
+		return model.ProtocolDDL
+	case cardigannrelease.ProtocolStreaming:
+		return model.ProtocolStreaming
 	default:
 		slog.Warn("unknown cardigann protocol, falling back to torrent", "protocol", string(protocol), "indexer_id", indexerID, "indexer_name", indexerName)
 		return model.ProtocolTorrent

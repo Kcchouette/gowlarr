@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
@@ -26,7 +27,7 @@ var (
 			PaddingRight(1)
 )
 
-func printResults(results []model.ReleaseInfo, jsonOutput bool) {
+func printResults(results []model.ReleaseInfo, jsonOutput, linksOutput bool) {
 	if jsonOutput {
 		data, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
@@ -38,18 +39,21 @@ func printResults(results []model.ReleaseInfo, jsonOutput bool) {
 	}
 
 	if !isatty() {
-		printPlainTable(results)
+		printPlainTable(results, linksOutput)
 		return
 	}
 
-	printStyledTable(results)
+	printStyledTable(results, linksOutput)
 }
 
-func printStyledTable(results []model.ReleaseInfo) {
-	headers := []string{"ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE"}
+func printStyledTable(results []model.ReleaseInfo, linksOutput bool) {
+	headers := []string{"ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE", "HOSTS"}
+	if linksOutput {
+		headers = append(headers, "LINK")
+	}
 	rows := make([][]string, 0, len(results))
 	for _, r := range results {
-		rows = append(rows, []string{
+		row := []string{
 			fmt.Sprintf("%d", r.ID),
 			shortAge(r.PublishDate),
 			string(r.Protocol),
@@ -57,7 +61,12 @@ func printStyledTable(results []model.ReleaseInfo) {
 			humanSize(r.Size),
 			r.IndexerName,
 			r.Title,
-		})
+			strings.Join(r.Hosts, ","),
+		}
+		if linksOutput {
+			row = append(row, displayLink(r))
+		}
+		rows = append(rows, row)
 	}
 
 	t := table.New().
@@ -81,16 +90,34 @@ func printStyledTable(results []model.ReleaseInfo) {
 		BorderHeader(true)
 
 	fmt.Println(t.Render())
-	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file.\n", len(results))
+	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", len(results))
 }
 
-func printPlainTable(results []model.ReleaseInfo) {
-	fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %s\n", "ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE")
-	for _, r := range results {
-		fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %s\n",
-			r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title)
+func printPlainTable(results []model.ReleaseInfo, linksOutput bool) {
+	if linksOutput {
+		fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %-30s %-12s %s\n", "ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE", "HOSTS", "LINK")
+	} else {
+		fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %-30s %s\n", "ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE", "HOSTS")
 	}
-	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file.\n", len(results))
+	for _, r := range results {
+		if linksOutput {
+			fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %-30s %-12s %s\n",
+				r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title, strings.Join(r.Hosts, ","), displayLink(r))
+		} else {
+			fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %-30s %s\n",
+				r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title, strings.Join(r.Hosts, ","))
+		}
+	}
+	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", len(results))
+}
+
+// displayLink returns the link shown by `search --links`: the streaming URL
+// when present, otherwise the resolved download link.
+func displayLink(r model.ReleaseInfo) string {
+	if r.Protocol == model.ProtocolStreaming && r.StreamURL != "" {
+		return r.StreamURL
+	}
+	return r.DownloadLink
 }
 
 func shortAge(t time.Time) string {

@@ -58,6 +58,14 @@ func NewResolverWithClient(client httpDoer, authHeaders map[string]string) *Reso
 // selector+attribute, and a partial branch would silently break indexers
 // that actually depend on it. Full support would be a separate project.
 func (r *Resolver) Resolve(ctx context.Context, release model.ReleaseInfo) (Artifact, error) {
+	// DDL and streaming results are display-only by design: Gowlarr never
+	// downloads them automatically (no debrid/aria2 in v1). The user copies
+	// the links from `gowlarr search --links`.
+	switch release.Protocol {
+	case model.ProtocolDDL, model.ProtocolStreaming:
+		return Artifact{}, fmt.Errorf("protocol %q is display-only: use `gowlarr search --links` to view the link(s)", release.Protocol)
+	}
+
 	if strings.HasPrefix(release.DownloadLink, "magnet:") {
 		return Artifact{
 			Filename: sanitizeFilename(release.Title) + ".magnet.txt",

@@ -24,6 +24,10 @@ type SearchParams struct {
 	NewznabURL      string
 	NewznabAPIKey   string
 	NewznabName     string
+	// IndexerID restricts the search to one configured indexer ("" = all).
+	IndexerID string
+	// Protocol restricts the results to one protocol ("" = all).
+	Protocol model.Protocol
 }
 
 // SearchResult contains the results of a search.
@@ -54,19 +58,30 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 
 	providers := []search.Provider{apibay.New()}
 
-	if params.NewznabURL != "" && params.NewznabAPIKey != "" {
-		name := params.NewznabName
-		if name == "" {
-			name = "newznab-generic"
+	if params.IndexerID == "" {
+		// Generic providers (apibay, ad-hoc newznab) only participate when
+		// no specific configured indexer is requested.
+		if params.NewznabURL != "" && params.NewznabAPIKey != "" {
+			name := params.NewznabName
+			if name == "" {
+				name = "newznab-generic"
+			}
+			providers = append(providers, newznab.New(name, name, params.NewznabURL, params.NewznabAPIKey))
 		}
-		providers = append(providers, newznab.New(name, name, params.NewznabURL, params.NewznabAPIKey))
+	} else {
+		// No generic providers when a specific indexer is targeted.
+		providers = nil
 	}
 
 	configured, err := BuildConfiguredProviders(s.store, s.cfg)
 	if err != nil {
 		slog.Warn("loading configured indexers", "err", err)
 	} else {
-		providers = append(providers, configured...)
+		for _, p := range configured {
+			if params.IndexerID == "" || p.ID() == params.IndexerID {
+				providers = append(providers, p)
+			}
+		}
 	}
 
 	engine := search.NewEngine(providers)
@@ -81,7 +96,18 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 		TMDBID:     params.TMDBID,
 	})
 
-	saved, err := s.store.SaveResults(result.Releases, 30*time.Minute)
+	releases := result.Releases
+	if params.Protocol != "" {
+		filtered := releases[:0]
+		for _, r := range releases {
+			if r.Protocol == params.Protocol {
+				filtered = append(filtered, r)
+			}
+		}
+		releases = filtered
+	}
+
+	saved, err := s.store.SaveResults(releases, 30*time.Minute)
 	if err != nil {
 		return SearchResult{}, fmt.Errorf("persisting search results: %w", err)
 	}

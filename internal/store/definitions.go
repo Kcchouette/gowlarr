@@ -111,8 +111,15 @@ func (s *Store) ListDefinitionsWithYAML(version string) ([]DefinitionFull, error
 	return defs, rows.Err()
 }
 
-// versionsByPriority returns versions in priority order (v11 first, then v10-v1).
-var versionsByPriority = []string{"v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"}
+// versionsByPriority returns versions in priority order ("local" definitions
+// first — committed in the repo, outside the Prowlarr corpus — then v11-v1).
+var versionsByPriority = []string{"local", "v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"}
+
+// VersionsByPriority returns the definition versions in resolution priority
+// order ("local" first, then v11-v1).
+func VersionsByPriority() []string {
+	return versionsByPriority
+}
 
 // GetDefinitionYAMLFallback returns the highest-priority version of a
 // definition (v11 first, then v10-v1) with a single indexed query (range

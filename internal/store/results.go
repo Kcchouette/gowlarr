@@ -28,8 +28,8 @@ func (s *Store) SaveResults(results []model.ReleaseInfo, ttl time.Duration) ([]m
 	stmt, err := tx.Prepare(`INSERT INTO search_results
 		(indexer_id, indexer_name, title, details_url, download_link, info_hash,
 		 size_bytes, publish_date, seeders, peers, grabs, categories, protocol,
-		 created_at, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		 hosts, unlocked, stream_url, created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return nil, fmt.Errorf("preparing insert: %w", err)
 	}
@@ -41,11 +41,16 @@ func (s *Store) SaveResults(results []model.ReleaseInfo, ttl time.Duration) ([]m
 		if err != nil {
 			return nil, fmt.Errorf("marshaling categories: %w", err)
 		}
+		hostsJSON, err := json.Marshal(r.Hosts)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling hosts: %w", err)
+		}
 
 		res, err := stmt.Exec(
 			r.IndexerID, r.IndexerName, r.Title, nullableString(r.Details), r.DownloadLink,
 			nullableString(r.InfoHash), r.Size, r.PublishDate.UTC().Format(time.RFC3339),
 			r.Seeders, r.Peers, r.Grabs, string(categoriesJSON), string(r.Protocol),
+			string(hostsJSON), r.Unlocked, nullableString(r.StreamURL),
 			createdAt, expiresAt,
 		)
 		if err != nil {
@@ -69,17 +74,17 @@ func (s *Store) SaveResults(results []model.ReleaseInfo, ttl time.Duration) ([]m
 func (s *Store) GetResult(id int64) (model.ReleaseInfo, error) {
 	row := s.db.QueryRow(`SELECT id, indexer_id, indexer_name, title, details_url,
 		download_link, info_hash, size_bytes, publish_date, seeders, peers, grabs,
-		categories, protocol, expires_at
+		categories, protocol, hosts, unlocked, stream_url, expires_at
 		FROM search_results WHERE id = ?`, id)
 
 	var r model.ReleaseInfo
-	var details, infoHash sql.NullString
+	var details, infoHash, hostsJSON, streamURL sql.NullString
 	var publishDate, expiresAt, protocol string
 	var categoriesJSON string
 
 	if err := row.Scan(&r.ID, &r.IndexerID, &r.IndexerName, &r.Title, &details,
 		&r.DownloadLink, &infoHash, &r.Size, &publishDate, &r.Seeders, &r.Peers, &r.Grabs,
-		&categoriesJSON, &protocol, &expiresAt); err != nil {
+		&categoriesJSON, &protocol, &hostsJSON, &r.Unlocked, &streamURL, &expiresAt); err != nil {
 		if err == sql.ErrNoRows {
 			return model.ReleaseInfo{}, fmt.Errorf("no search result with id %d (expired or unknown, run `search` again)", id)
 		}
@@ -99,6 +104,13 @@ func (s *Store) GetResult(id int64) (model.ReleaseInfo, error) {
 	if err := json.Unmarshal([]byte(categoriesJSON), &r.Categories); err != nil {
 		return model.ReleaseInfo{}, fmt.Errorf("unmarshaling categories for result %d: %w", id, err)
 	}
+	// hosts is NULL for rows saved before migration 0004.
+	if hostsJSON.Valid && hostsJSON.String != "" {
+		if err := json.Unmarshal([]byte(hostsJSON.String), &r.Hosts); err != nil {
+			return model.ReleaseInfo{}, fmt.Errorf("unmarshaling hosts for result %d: %w", id, err)
+		}
+	}
+	r.StreamURL = streamURL.String
 
 	return r, nil
 }

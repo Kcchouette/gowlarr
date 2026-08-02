@@ -31,7 +31,15 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 		instanceID = defID
 	}
 
-	raw, err := s.store.GetDefinitionYAML(defID, version)
+	var raw string
+	var err error
+	if version == "" {
+		// No version requested: resolve the highest-priority version
+		// ("local" first, then v11-v1).
+		raw, _, err = s.store.GetDefinitionYAMLFallback(defID)
+	} else {
+		raw, err = s.store.GetDefinitionYAML(defID, version)
+	}
 	if err != nil {
 		return err
 	}
@@ -41,8 +49,17 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 	}
 
 	protocol := "torrent"
-	if def.IsUsenet() {
+	switch def.Type {
+	case "usenet":
 		protocol = "usenet"
+	case "ddl":
+		protocol = "ddl"
+	case "streaming":
+		protocol = "streaming"
+	default:
+		if def.IsUsenet() {
+			protocol = "usenet"
+		}
 	}
 
 	cfg := store.IndexerConfig{
@@ -124,7 +141,9 @@ func (s *IndexerService) ResolveDefinition(query string, version string) ([]Reso
 	}
 
 	query = strings.ToLower(strings.TrimSpace(query))
-	var results []ResolvedDefinition
+	// Deduplicated by definition ID: when several versions match, only the
+	// highest-priority one ("local" > v11 > v10 > ...) is kept.
+	byID := make(map[string]ResolvedDefinition)
 
 	for _, d := range defs {
 		def, err := parseDefinition(d.YAML)
@@ -140,14 +159,22 @@ func (s *IndexerService) ResolveDefinition(query string, version string) ([]Reso
 					domain = u.Hostname()
 				}
 			}
-			results = append(results, ResolvedDefinition{
-				ID:      def.ID,
-				Name:    def.Name,
-				Domain:  domain,
-				Version: d.Version,
-				Score:   score,
-			})
+			existing, ok := byID[def.ID]
+			if !ok || versionPriority(d.Version) < versionPriority(existing.Version) {
+				byID[def.ID] = ResolvedDefinition{
+					ID:      def.ID,
+					Name:    def.Name,
+					Domain:  domain,
+					Version: d.Version,
+					Score:   score,
+				}
+			}
 		}
+	}
+
+	results := make([]ResolvedDefinition, 0, len(byID))
+	for _, r := range byID {
+		results = append(results, r)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
@@ -155,6 +182,17 @@ func (s *IndexerService) ResolveDefinition(query string, version string) ([]Reso
 	})
 
 	return results, nil
+}
+
+// versionPriority returns the rank of a definition version in
+// versionsByPriority (lower = higher priority; unknown versions rank last).
+func versionPriority(version string) int {
+	for i, v := range store.VersionsByPriority() {
+		if v == version {
+			return i
+		}
+	}
+	return len(store.VersionsByPriority())
 }
 
 // scoreMatch returns a relevance score (0-100) for a query against a definition.

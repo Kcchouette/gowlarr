@@ -96,7 +96,7 @@ func TestPrintPlainTable(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printPlainTable(results)
+	printPlainTable(results, false)
 
 	w.Close()
 	os.Stdout = old
@@ -148,7 +148,7 @@ func TestPrintResultsJSON(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printResults(results, true)
+	printResults(results, true, false)
 
 	w.Close()
 	os.Stdout = old
@@ -179,7 +179,7 @@ func TestPrintResultsEmpty(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	printResults(nil, false)
+	printResults(nil, false, false)
 
 	w.Close()
 	os.Stdout = old

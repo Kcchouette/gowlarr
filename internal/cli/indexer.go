@@ -98,7 +98,7 @@ or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "Instance ID (default: same as definition)")
-	cmd.Flags().StringVar(&version, "version", "v11", "Definition schema version")
+	cmd.Flags().StringVar(&version, "version", "", "Definition schema version (default: local then v11)")
 	cmd.Flags().StringVar(&proxyURL, "proxy", "", "Dedicated proxy URL (http://... or socks5://...)")
 	cmd.Flags().StringArrayVar(&settings, "setting", nil, "Setting in key=value format (repeatable)")
 	return cmd
@@ -215,6 +215,6 @@ func newIndexerTestCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Definition schema version")
+	cmd.Flags().StringVar(&version, "version", "", "Definition schema version (default: local then v11)")
 	return cmd
 }

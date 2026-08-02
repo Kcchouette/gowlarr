@@ -63,6 +63,100 @@ func TestResults_SaveAndGetRoundTrip(t *testing.T) {
 	}
 }
 
+func TestResults_SaveAndGetDDLFields(t *testing.T) {
+	st := openTestStore(t)
+
+	results := []model.ReleaseInfo{
+		{
+			Title:        "Bleach 01",
+			DownloadLink: "https://www.uptobox.com/abc123",
+			Protocol:     model.ProtocolDDL,
+			IndexerID:    "japanfan",
+			IndexerName:  "JapanFan",
+			Hosts:        []string{"uptobox.com"},
+			Unlocked:     true,
+		},
+		{
+			Title:        "Stream Show",
+			DownloadLink: "https://example.invalid/ep/1",
+			StreamURL:    "https://cdn.example.invalid/stream.mp4",
+			Protocol:     model.ProtocolStreaming,
+			IndexerID:    "streamidx",
+			IndexerName:  "StreamIdx",
+		},
+	}
+
+	saved, err := st.SaveResults(results, 30*time.Minute)
+	if err != nil {
+		t.Fatalf("SaveResults: %v", err)
+	}
+	if len(saved) != 2 {
+		t.Fatalf("expected 2 saved results, got %d", len(saved))
+	}
+
+	ddl, err := st.GetResult(saved[0].ID)
+	if err != nil {
+		t.Fatalf("GetResult(ddl): %v", err)
+	}
+	if ddl.Protocol != model.ProtocolDDL {
+		t.Errorf("Protocol = %q, want ddl", ddl.Protocol)
+	}
+	if len(ddl.Hosts) != 1 || ddl.Hosts[0] != "uptobox.com" {
+		t.Errorf("Hosts = %v, want [uptobox.com]", ddl.Hosts)
+	}
+	if !ddl.Unlocked {
+		t.Error("Unlocked = false, want true")
+	}
+
+	stream, err := st.GetResult(saved[1].ID)
+	if err != nil {
+		t.Fatalf("GetResult(streaming): %v", err)
+	}
+	if stream.Protocol != model.ProtocolStreaming {
+		t.Errorf("Protocol = %q, want streaming", stream.Protocol)
+	}
+	if stream.StreamURL != "https://cdn.example.invalid/stream.mp4" {
+		t.Errorf("StreamURL = %q, want the stream URL", stream.StreamURL)
+	}
+	if stream.Unlocked {
+		t.Error("Unlocked = true, want false for a plain streaming row")
+	}
+}
+
+func TestResults_GetResultLegacyNullHosts(t *testing.T) {
+	// Rows inserted before migration 0004 have a NULL hosts column:
+	// GetResult must not fail and must yield an empty Hosts slice.
+	st := openTestStore(t)
+
+	_, err := st.db.Exec(`INSERT INTO search_results
+		(indexer_id, indexer_name, title, details_url, download_link, info_hash,
+		 size_bytes, publish_date, seeders, peers, grabs, categories, protocol,
+		 created_at, expires_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"legacy", "Legacy", "Old Row", "https://example.invalid/details", "https://example.invalid/dl",
+		"hash123", 1024, time.Now().UTC().Format(time.RFC3339), 1, 0, 0, "[]", "torrent",
+		time.Now().UTC().Format(time.RFC3339), time.Now().UTC().Add(time.Hour).Format(time.RFC3339))
+	if err != nil {
+		t.Fatalf("inserting legacy row: %v", err)
+	}
+
+	var id int64
+	if err := st.db.QueryRow(`SELECT id FROM search_results WHERE title = ?`, "Old Row").Scan(&id); err != nil {
+		t.Fatalf("reading legacy row id: %v", err)
+	}
+
+	got, err := st.GetResult(id)
+	if err != nil {
+		t.Fatalf("GetResult(legacy): %v", err)
+	}
+	if len(got.Hosts) != 0 {
+		t.Errorf("Hosts = %v, want empty for legacy row", got.Hosts)
+	}
+	if !got.Unlocked {
+		t.Error("Unlocked = false, want default true for legacy row")
+	}
+}
+
 func TestResults_Get_NotFound(t *testing.T) {
 	st := openTestStore(t)
 

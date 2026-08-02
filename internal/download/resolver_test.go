@@ -26,6 +26,35 @@ func newResolverTestClient(server *httptest.Server) *http.Client {
 	}
 }
 
+func TestResolver_DisplayOnlyProtocols(t *testing.T) {
+	// DDL and streaming results are display-only: Resolve must refuse without
+	// issuing any HTTP request (the test client panics if dialed).
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("Resolve must not fetch for display-only protocols")
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	for _, tc := range []struct {
+		name     string
+		protocol model.Protocol
+	}{
+		{"ddl", model.ProtocolDDL},
+		{"streaming", model.ProtocolStreaming},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			release := model.ReleaseInfo{Title: "X", DownloadLink: resolverTestBaseURL + "/dl", Protocol: tc.protocol}
+			_, err := r.Resolve(context.Background(), release)
+			if err == nil {
+				t.Fatal("expected an error for a display-only protocol")
+			}
+			if !strings.Contains(err.Error(), "display-only") {
+				t.Errorf("error should mention display-only, got %q", err)
+			}
+		})
+	}
+}
+
 func TestResolver_DirectTorrent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("FAKE_TORRENT_BYTES"))

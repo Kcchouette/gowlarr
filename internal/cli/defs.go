@@ -9,6 +9,8 @@ import (
 	"github.com/Kcchouette/cardigann-go/definition"
 	"github.com/Kcchouette/cardigann-go/defs"
 	"github.com/spf13/cobra"
+
+	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 func newDefsCmd() *cobra.Command {
@@ -57,18 +59,29 @@ func newDefsSyncCmd() *cobra.Command {
 
 			if fetcher.NotModified() {
 				fmt.Println("Definitions already up to date.")
-				return nil
-			}
-			storeETag(cfg.DefsCacheDir, fetcher.LastETag())
+			} else {
+				storeETag(cfg.DefsCacheDir, fetcher.LastETag())
 
-			for _, raw := range raws {
-				v := raw.Version
-				if version != "" {
-					v = version
+				for _, raw := range raws {
+					v := raw.Version
+					if version != "" {
+						v = version
+					}
+					if err := st.SaveDefinition(raw.ID, v, raw.SHA, raw.YAML); err != nil {
+						return err
+					}
 				}
-				if err := st.SaveDefinition(raw.ID, v, raw.SHA, raw.YAML); err != nil {
-					return err
-				}
+			}
+
+			// Repo-local definitions (definitions-local/*.yml) are ingested
+			// regardless of the remote sync result, so `indexer add` can
+			// resolve them even when the remote corpus is unchanged.
+			localCount, err := ingestLocalDefinitions(st)
+			if err != nil {
+				return err
+			}
+			if localCount > 0 {
+				fmt.Printf("%d local definition(s) ingested from definitions-local/.\n", localCount)
 			}
 
 			if version != "" {
@@ -151,6 +164,59 @@ func newDefsShowCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&version, "version", "v11", "Schema version")
 	return cmd
+}
+
+// localDefsDir returns the repo-local definitions directory: first
+// ./definitions-local relative to the working directory, then relative to
+// the executable (so an installed binary still finds the repo's local defs).
+func localDefsDir() string {
+	if wd, err := os.Getwd(); err == nil {
+		dir := filepath.Join(wd, "definitions-local")
+		if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+			return dir
+		}
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Join(filepath.Dir(exe), "definitions-local")
+		if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
+			return dir
+		}
+	}
+	return ""
+}
+
+// ingestLocalDefinitions upserts the repo-local definitions
+// (definitions-local/*.yml) into the cache under version "local". Returns the
+// number of ingested definitions.
+func ingestLocalDefinitions(st *store.Store) (int, error) {
+	dir := localDefsDir()
+	if dir == "" {
+		return 0, nil
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return 0, fmt.Errorf("reading local definitions dir: %w", err)
+	}
+
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return count, fmt.Errorf("reading local definition %s: %w", e.Name(), err)
+		}
+		def, err := definition.Parse(raw)
+		if err != nil {
+			return count, fmt.Errorf("parsing local definition %s: %w", e.Name(), err)
+		}
+		if err := st.SaveDefinition(def.ID, "local", "", string(raw)); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
 }
 
 func methodOrNone(method string) string {
