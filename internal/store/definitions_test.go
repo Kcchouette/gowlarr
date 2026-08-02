@@ -54,3 +54,69 @@ func TestGetDefinitionYAML_Fallback_NotFound(t *testing.T) {
 		t.Fatal("expected error for nonexistent definition")
 	}
 }
+
+func TestListDefinitionsWithYAML_Empty(t *testing.T) {
+	st := openTestStore(t)
+
+	defs, err := st.ListDefinitionsWithYAML("")
+	if err != nil {
+		t.Fatalf("ListDefinitionsWithYAML: %v", err)
+	}
+	if len(defs) != 0 {
+		t.Errorf("expected 0 definitions, got %d", len(defs))
+	}
+}
+
+func TestListDefinitionsWithYAML_WithData(t *testing.T) {
+	st := openTestStore(t)
+
+	if err := st.SaveDefinition("alpha", "v11", "sha-a", "yaml-alpha"); err != nil {
+		t.Fatalf("SaveDefinition alpha: %v", err)
+	}
+	if err := st.SaveDefinition("beta", "v11", "sha-b", "yaml-beta"); err != nil {
+		t.Fatalf("SaveDefinition beta: %v", err)
+	}
+	if err := st.SaveDefinition("gamma", "v10", "sha-g", "yaml-gamma-v10"); err != nil {
+		t.Fatalf("SaveDefinition gamma v10: %v", err)
+	}
+
+	// All versions
+	defs, err := st.ListDefinitionsWithYAML("")
+	if err != nil {
+		t.Fatalf("ListDefinitionsWithYAML: %v", err)
+	}
+	if len(defs) != 3 {
+		t.Fatalf("expected 3 definitions, got %d", len(defs))
+	}
+	// Ordered by id
+	if defs[0].ID != "alpha" || defs[1].ID != "beta" || defs[2].ID != "gamma" {
+		t.Errorf("unexpected order: %v %v %v", defs[0].ID, defs[1].ID, defs[2].ID)
+	}
+	// YAML content preserved
+	if defs[0].YAML != "yaml-alpha" {
+		t.Errorf("defs[0].YAML = %q, want %q", defs[0].YAML, "yaml-alpha")
+	}
+
+	// Filter by version
+	defsV11, err := st.ListDefinitionsWithYAML("v11")
+	if err != nil {
+		t.Fatalf("ListDefinitionsWithYAML v11: %v", err)
+	}
+	if len(defsV11) != 2 {
+		t.Fatalf("expected 2 v11 definitions, got %d", len(defsV11))
+	}
+
+	defsV10, err := st.ListDefinitionsWithYAML("v10")
+	if err != nil {
+		t.Fatalf("ListDefinitionsWithYAML v10: %v", err)
+	}
+	if len(defsV10) != 1 {
+		t.Fatalf("expected 1 v10 definition, got %d", len(defsV10))
+	}
+	if defsV10[0].ID != "gamma" {
+		t.Errorf("v10 definition ID = %q, want %q", defsV10[0].ID, "gamma")
+	}
+	if defsV10[0].YAML != "yaml-gamma-v10" {
+		t.Errorf("v10 definition YAML = %q, want %q", defsV10[0].YAML, "yaml-gamma-v10")
+	}
+}

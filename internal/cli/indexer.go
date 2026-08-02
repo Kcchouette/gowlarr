@@ -32,9 +32,12 @@ func newIndexerAddCmd() *cobra.Command {
 		settings []string
 	)
 	cmd := &cobra.Command{
-		Use:   "add <definition-id>",
-		Short: "Add an indexer instance from a cached definition",
-		Args:  cobra.ExactArgs(1),
+		Use:   "add <query>",
+		Short: "Add an indexer instance (by definition ID, domain, or name)",
+		Long: `Add an indexer instance from a cached definition.
+The query can be a definition ID (e.g. "1337x"), a domain (e.g. "abn.lol"),
+or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
 			if err != nil {
@@ -48,15 +51,49 @@ func newIndexerAddCmd() *cobra.Command {
 			}
 
 			svc := service.NewIndexerService(st, cfg)
-			if err := svc.Add(args[0], id, version, proxyURL, settingsMap); err != nil {
+
+			// Resolve the query to a definition ID.
+			resolved, err := svc.ResolveDefinition(args[0], version)
+			if err != nil {
+				return err
+			}
+			if len(resolved) == 0 {
+				return fmt.Errorf("no definition found for %q; run `gowlarr defs sync` and retry", args[0])
+			}
+
+			best := resolved[0]
+			if best.Score < 60 {
+				fmt.Printf("Multiple matches for %q:\n", args[0])
+				limit := len(resolved)
+				if limit > 5 {
+					limit = 5
+				}
+				for _, r := range resolved[:limit] {
+					domain := r.Domain
+					if domain == "" {
+						domain = "-"
+					}
+					fmt.Printf("  %-25s %-20s %s\n", r.ID, r.Name, domain)
+				}
+				return fmt.Errorf("be more specific: use the exact definition ID or a more precise domain")
+			}
+
+			defID := best.ID
+			instanceID := id
+			if instanceID == "" {
+				if best.Domain != "" {
+					instanceID = best.Domain
+				} else {
+					instanceID = defID
+				}
+			}
+			fmt.Printf("Resolved %q → definition %q (%s)\n", args[0], defID, best.Name)
+
+			if err := svc.Add(defID, instanceID, version, proxyURL, settingsMap); err != nil {
 				return err
 			}
 
-			instanceID := id
-			if instanceID == "" {
-				instanceID = args[0]
-			}
-			fmt.Printf("Indexer %q added (definition %q).\n", instanceID, args[0])
+			fmt.Printf("Indexer %q added (definition %q).\n", instanceID, defID)
 			return nil
 		},
 	}

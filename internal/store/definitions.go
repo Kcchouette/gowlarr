@@ -75,6 +75,43 @@ func (s *Store) ListDefinitions(version string) ([]DefinitionMeta, error) {
 	return metas, rows.Err()
 }
 
+// DefinitionFull is a cached definition with its raw YAML content,
+// used for fuzzy resolution where the YAML must be parsed to extract
+// name, links, and other metadata.
+type DefinitionFull struct {
+	ID      string
+	Version string
+	YAML    string
+}
+
+// ListDefinitionsWithYAML returns all cached definitions with their raw YAML.
+// Pass version="" to include all versions.
+func (s *Store) ListDefinitionsWithYAML(version string) ([]DefinitionFull, error) {
+	query := `SELECT id, version, raw_yaml FROM indexer_definitions`
+	args := []any{}
+	if version != "" {
+		query += ` WHERE version = ?`
+		args = append(args, version)
+	}
+	query += ` ORDER BY id`
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("listing definitions with yaml: %w", err)
+	}
+	defer rows.Close()
+
+	var defs []DefinitionFull
+	for rows.Next() {
+		var d DefinitionFull
+		if err := rows.Scan(&d.ID, &d.Version, &d.YAML); err != nil {
+			return nil, fmt.Errorf("scanning definition row: %w", err)
+		}
+		defs = append(defs, d)
+	}
+	return defs, rows.Err()
+}
+
 // versionsByPriority returns versions in priority order (v11 first, then v10-v1).
 var versionsByPriority = []string{"v11", "v10", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"}
 

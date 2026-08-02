@@ -35,21 +35,46 @@ func newDefsSyncCmd() *cobra.Command {
 			defer st.Close()
 
 			fetcher := defs.NewFetcher()
-			raws, err := fetcher.FetchVersion(cmd.Context(), version)
-			if err != nil {
-				return fmt.Errorf("synchronizing definitions %s: %w", version, err)
+
+			var raws []defs.RawDefinition
+			if version != "" {
+				raws, err = fetcher.FetchVersion(cmd.Context(), version)
+				if err != nil {
+					return fmt.Errorf("synchronizing definitions %s: %w", version, err)
+				}
+			} else {
+				raws, err = fetcher.FetchAll(cmd.Context())
+				if err != nil {
+					return fmt.Errorf("synchronizing definitions: %w", err)
+				}
 			}
 
 			for _, raw := range raws {
-				if err := st.SaveDefinition(raw.ID, version, raw.SHA, raw.YAML); err != nil {
+				v := raw.Version
+				if version != "" {
+					v = version
+				}
+				if err := st.SaveDefinition(raw.ID, v, raw.SHA, raw.YAML); err != nil {
 					return err
 				}
 			}
-			fmt.Printf("%d definition(s) %s synchronized.\n", len(raws), version)
+
+			if version != "" {
+				fmt.Printf("%d definition(s) %s synchronized.\n", len(raws), version)
+			} else {
+				byVersion := make(map[string]int)
+				for _, raw := range raws {
+					byVersion[raw.Version]++
+				}
+				for v, count := range byVersion {
+					fmt.Printf("%d definition(s) %s synchronized.\n", count, v)
+				}
+				fmt.Printf("Total: %d definition(s) across %d version(s).\n", len(raws), len(byVersion))
+			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Cardigann schema version to synchronize")
+	cmd.Flags().StringVar(&version, "version", "", "Sync a specific version only (default: all)")
 	return cmd
 }
 
@@ -79,7 +104,7 @@ func newDefsListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&version, "version", "v11", "Filter by version (empty = all)")
+	cmd.Flags().StringVar(&version, "version", "", "Filter by version (empty = all)")
 	return cmd
 }
 

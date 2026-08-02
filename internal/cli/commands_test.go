@@ -76,6 +76,82 @@ func TestIndexerAddCmdRejectsInvalidSetting(t *testing.T) {
 	}
 }
 
+func TestIndexerAddCmdNoDefinitionFound(t *testing.T) {
+	isolateCLIUserDirs(t)
+	writeCLIConfig(t)
+
+	cmd := newIndexerAddCmd()
+	cmd.SetArgs([]string{"nonexistent-indexer"})
+
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "no definition found") {
+		t.Fatalf("expected 'no definition found' error, got %v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "defs sync") {
+		t.Fatalf("expected 'defs sync' suggestion in error, got %v", err)
+	}
+}
+
+func TestIndexerAddCmdAmbiguousQuery(t *testing.T) {
+	isolateCLIUserDirs(t)
+	writeCLIConfig(t)
+
+	// Seed definitions into the store via the service layer
+	st, _, err := openStore()
+	if err != nil {
+		t.Fatalf("openStore: %v", err)
+	}
+	defer st.Close()
+
+	// Save two similar definitions
+	yaml1 := `id: tracker-alpha
+name: Alpha Tracker
+type: public
+links:
+  - https://alpha.example.com
+search:
+  paths:
+    - path: /search
+      response:
+        type: html
+  rows:
+    selector: tr
+  fields:
+    title:
+      selector: a`
+	yaml2 := `id: tracker-beta
+name: Beta Tracker
+type: public
+links:
+  - https://beta.example.com
+search:
+  paths:
+    - path: /search
+      response:
+        type: html
+  rows:
+    selector: tr
+  fields:
+    title:
+      selector: a`
+	if err := st.SaveDefinition("tracker-alpha", "v11", "sha1", yaml1); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	if err := st.SaveDefinition("tracker-beta", "v11", "sha2", yaml2); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	st.Close()
+
+	// Now try adding with a query that matches both domains partially
+	cmd := newIndexerAddCmd()
+	cmd.SetArgs([]string{"tracker"})
+
+	err = cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "be more specific") {
+		t.Fatalf("expected 'be more specific' error for ambiguous query, got %v", err)
+	}
+}
+
 func TestDefsShowCmdRequiresDefinitionID(t *testing.T) {
 	cmd := newDefsShowCmd()
 	cmd.SetArgs(nil)

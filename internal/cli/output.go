@@ -4,8 +4,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
+	"time"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
+)
+
+var (
+	headerStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("6")). // cyan
+			PaddingRight(1)
+
+	cellStyle = lipgloss.NewStyle().
+			PaddingRight(1)
+
+	numberStyle = lipgloss.NewStyle().
+			Align(lipgloss.Right).
+			PaddingRight(1)
 )
 
 func printResults(results []model.ReleaseInfo, jsonOutput bool) {
@@ -19,12 +37,89 @@ func printResults(results []model.ReleaseInfo, jsonOutput bool) {
 		return
 	}
 
-	fmt.Printf("%-4s %-8s %-8s %-6s %-10s %s\n", "ID", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE")
+	if !isatty() {
+		printPlainTable(results)
+		return
+	}
+
+	printStyledTable(results)
+}
+
+func printStyledTable(results []model.ReleaseInfo) {
+	headers := []string{"ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE"}
+	rows := make([][]string, 0, len(results))
 	for _, r := range results {
-		fmt.Printf("%-4d %-8s %-8d %-10s %-10s %s\n",
-			r.ID, r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title)
+		rows = append(rows, []string{
+			fmt.Sprintf("%d", r.ID),
+			shortAge(r.PublishDate),
+			string(r.Protocol),
+			fmt.Sprintf("%d", r.Seeders),
+			humanSize(r.Size),
+			r.IndexerName,
+			r.Title,
+		})
+	}
+
+	t := table.New().
+		Headers(headers...).
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return headerStyle
+			}
+			switch col {
+			case 0, 3: // ID, SEEDS
+				return numberStyle
+			case 4: // SIZE
+				return numberStyle
+			default:
+				return cellStyle
+			}
+		}).
+		Border(lipgloss.RoundedBorder()).
+		BorderColumn(true).
+		BorderHeader(true)
+
+	fmt.Println(t.Render())
+	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file.\n", len(results))
+}
+
+func printPlainTable(results []model.ReleaseInfo) {
+	fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %s\n", "ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE")
+	for _, r := range results {
+		fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %s\n",
+			r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title)
 	}
 	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file.\n", len(results))
+}
+
+func shortAge(t time.Time) string {
+	if t.IsZero() {
+		return "-"
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%dy", int(d.Hours()/(24*365)))
+	}
+}
+
+func isatty() bool {
+	f, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return f.Mode()&os.ModeCharDevice != 0
 }
 
 func humanSize(bytes int64) string {
