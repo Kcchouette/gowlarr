@@ -56,6 +56,9 @@ func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]str
 	if len(overrides) > 0 {
 		cloned := sharedTransport.Clone()
 		cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
+		// A custom DialContext disables HTTP/2 by default; re-enable it so
+		// Cloudflare-fronted hosts still negotiate properly.
+		cloned.ForceAttemptHTTP2 = true
 		transport = cloned
 	}
 	return &Client{
