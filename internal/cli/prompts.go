@@ -40,7 +40,7 @@ var stdinIsTerminal = func() bool {
 	if os.Getenv("CI") != "" {
 		return false
 	}
-	return term.IsTerminal(uintptr(os.Stdin.Fd()))
+	return term.IsTerminal(os.Stdin.Fd())
 }
 
 // newStdinPrompter constructs the real prompter; overridable in tests to
@@ -74,7 +74,7 @@ func (p stdinPrompter) Ask(label string, masked bool, help string) (string, erro
 		// the process with echo still disabled.
 		ch := make(chan os.Signal, 1)
 		signal.Notify(ch, os.Interrupt)
-		v, err := term.ReadPassword(uintptr(os.Stdin.Fd()))
+		v, err := term.ReadPassword(os.Stdin.Fd())
 		signal.Stop(ch)
 		fmt.Fprintln(p.out) // newline: ReadPassword suppresses echo AND the Enter
 		if err != nil {
