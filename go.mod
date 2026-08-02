@@ -10,6 +10,8 @@ require (
 	modernc.org/sqlite v1.54.0
 )
 
+replace github.com/Kcchouette/cardigann-go => /home/jeremy/Developpment/GitHub/cardigann-go
+
 require (
 	github.com/PuerkitoBio/goquery v1.12.0 // indirect
 	github.com/andybalholm/cascadia v1.3.3 // indirect
