@@ -11,11 +11,20 @@ import (
 // config.DNSOverrides and wired in by the service layer.
 var dnsOverrides map[string]string
 
-// SetDNSOverrides installs the global hostname→IP overrides. An empty or nil
+// SetDNSOverrides installs the global hostname→IP overrides. Keys are
+// normalized to lowercase (hostnames are case-insensitive). An empty or nil
 // map disables overrides. Not safe for concurrent mutation; call once at
 // startup.
 func SetDNSOverrides(overrides map[string]string) {
-	dnsOverrides = overrides
+	if len(overrides) == 0 {
+		dnsOverrides = nil
+		return
+	}
+	normalized := make(map[string]string, len(overrides))
+	for host, ip := range overrides {
+		normalized[strings.ToLower(host)] = ip
+	}
+	dnsOverrides = normalized
 }
 
 // OverrideDialContext wraps a base DialContext so that connections to

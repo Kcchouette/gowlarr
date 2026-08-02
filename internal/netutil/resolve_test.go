@@ -29,8 +29,8 @@ func TestOverrideDialContext(t *testing.T) {
 }
 
 func TestOverrideDialContextNilBase(t *testing.T) {
-	// nil base must not panic: the default dialer replaces it and the
-	// override rewriting still applies (verified via a recorder base).
+	// A nil base must not panic: the standard dialer replaces it, and an
+	// overridden host is rewritten to the fixed IP before the dial.
 	overrides := map[string]string{"example.com": "93.184.216.34"}
 	got := ""
 	dial := OverrideDialContext(func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -42,6 +42,33 @@ func TestOverrideDialContextNilBase(t *testing.T) {
 	if got != "93.184.216.34:443" {
 		t.Fatalf("dialed %q, want %q", got, "93.184.216.34:443")
 	}
+
+	// nil base: the wrapper must still rewrite before delegating to the
+	// default dialer. A cancelled context fails the dial immediately
+	// (no network dependency), proving the wrapper does not panic.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	dialNil := OverrideDialContext(nil, overrides)
+	if _, err := dialNil(ctx, "tcp", "example.com:443"); err == nil {
+		t.Fatal("expected a dial error on a cancelled context, got nil")
+	}
+}
+
+func TestSetDNSOverridesLowercasesKeys(t *testing.T) {
+	originalOverrides := dnsOverrides
+	t.Cleanup(func() { dnsOverrides = originalOverrides })
+
+	SetDNSOverrides(map[string]string{"HydraTracker.COM": "104.21.16.105"})
+
+	addrs, err := lookupHost(context.Background(), "hydratracker.com")
+	if err != nil {
+		t.Fatalf("lookupHost with mixed-case override key: %v", err)
+	}
+	if len(addrs) != 1 || addrs[0] != "104.21.16.105" {
+		t.Fatalf("lookupHost returned %v, want [104.21.16.105]", addrs)
+	}
+
+	SetDNSOverrides(nil)
 }
 
 func TestLookupHostWithOverrides(t *testing.T) {
