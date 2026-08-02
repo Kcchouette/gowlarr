@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 
 	"github.com/Kcchouette/cardigann-go/definition"
@@ -91,4 +92,76 @@ func (p stdinPrompter) Ask(label string, masked bool, help string) (string, erro
 		return "", fmt.Errorf("reading %s: input closed (EOF)", label)
 	}
 	return strings.TrimRight(line, "\r\n"), nil
+}
+
+// runPrompts interactively fills the missing required settings of def,
+// printing each info setting's Default text once as help beforehand. The
+// result merges prompted values into a copy of provided.
+func runPrompts(def definition.IndexerDefinition, provided map[string]string, p prompter, w io.Writer) (map[string]string, error) {
+	required := requiredSettings(def, provided)
+	if len(required) == 0 {
+		return provided, nil
+	}
+	for _, s := range def.Settings {
+		if s.Type == "info" && s.Default != "" {
+			fmt.Fprintln(w, s.Default)
+		}
+	}
+	out := make(map[string]string, len(provided)+len(required))
+	for k, v := range provided {
+		out[k] = v
+	}
+	for _, s := range required {
+		label := s.Label
+		if label == "" {
+			label = s.Name
+		}
+		v, err := p.Ask(label, s.Type == "password", "")
+		if err != nil {
+			return nil, fmt.Errorf("prompting %q: %w", s.Name, err)
+		}
+		out[s.Name] = v
+	}
+	return out, nil
+}
+
+// printSettingsSummary prints the settings about to be persisted, masking
+// password values. Keys not declared in the definition (likely --setting
+// typos) are listed after the known ones, sorted.
+func printSettingsSummary(def definition.IndexerDefinition, settings map[string]string, w io.Writer) {
+	if len(settings) == 0 {
+		return
+	}
+	fmt.Fprintln(w, "Settings to save:")
+	known := make(map[string]struct{}, len(def.Settings))
+	for _, s := range def.Settings {
+		known[s.Name] = struct{}{}
+		if v, ok := settings[s.Name]; ok {
+			fmt.Fprintf(w, "  %s: %s\n", displaySettingLabel(s), displaySettingValue(s, v))
+		}
+	}
+	var extra []string
+	for k := range settings {
+		if _, ok := known[k]; !ok {
+			extra = append(extra, k)
+		}
+	}
+	sort.Strings(extra)
+	for _, k := range extra {
+		fmt.Fprintf(w, "  %s: %s\n", k, settings[k])
+	}
+}
+
+func displaySettingLabel(s definition.Setting) string {
+	if s.Label != "" {
+		return s.Label
+	}
+	return s.Name
+}
+
+func displaySettingValue(s definition.Setting, v string) string {
+	if s.Type == "password" {
+		return "*****"
+	}
+	return v
 }

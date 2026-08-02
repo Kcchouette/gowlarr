@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"reflect"
@@ -173,4 +174,169 @@ func TestStdinPrompterPlainEOF(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "input closed (EOF)") {
 		t.Errorf("expected EOF error, got %v", err)
 	}
+}
+
+type fakePromptCall struct {
+	label  string
+	masked bool
+	help   string
+}
+
+type fakePrompter struct {
+	answers []string
+	err     error
+	calls   []fakePromptCall
+}
+
+func (f *fakePrompter) Ask(label string, masked bool, help string) (string, error) {
+	f.calls = append(f.calls, fakePromptCall{label: label, masked: masked, help: help})
+	if f.err != nil {
+		return "", f.err
+	}
+	if len(f.answers) == 0 {
+		return "", nil
+	}
+	v := f.answers[0]
+	f.answers = f.answers[1:]
+	return v, nil
+}
+
+func TestRunPrompts(t *testing.T) {
+	t.Run("no required settings", func(t *testing.T) {
+		fake := &fakePrompter{}
+		var buf bytes.Buffer
+		got, err := runPrompts(japanfanLikeDef(), map[string]string{"username": "a", "password": "b"}, fake, &buf)
+		if err != nil {
+			t.Fatalf("runPrompts: %v", err)
+		}
+		if len(fake.calls) != 0 {
+			t.Errorf("expected no prompts, got %d", len(fake.calls))
+		}
+		if got["username"] != "a" || got["password"] != "b" {
+			t.Errorf("map changed unexpectedly: %v", got)
+		}
+	})
+
+	t.Run("japanfan prompts in order with masked password and info once", func(t *testing.T) {
+		fake := &fakePrompter{answers: []string{"alice", "s3cret"}}
+		var buf bytes.Buffer
+		got, err := runPrompts(japanfanLikeDef(), nil, fake, &buf)
+		if err != nil {
+			t.Fatalf("runPrompts: %v", err)
+		}
+		if len(fake.calls) != 2 {
+			t.Fatalf("expected 2 prompts, got %d", len(fake.calls))
+		}
+		if fake.calls[0] != (fakePromptCall{label: "Username", masked: false}) ||
+			fake.calls[1] != (fakePromptCall{label: "Password", masked: true}) {
+			t.Errorf("calls = %+v", fake.calls)
+		}
+		if got["username"] != "alice" || got["password"] != "s3cret" {
+			t.Errorf("merged = %v", got)
+		}
+		if n := strings.Count(buf.String(), "https://japanfan.org/phpBB3/"); n != 1 {
+			t.Errorf("info help printed %d times, want 1", n)
+		}
+	})
+
+	t.Run("abnormal with apikey provided prompts nothing", func(t *testing.T) {
+		fake := &fakePrompter{}
+		var buf bytes.Buffer
+		got, err := runPrompts(abnormalLikeDef(), map[string]string{"apikey": "k"}, fake, &buf)
+		if err != nil {
+			t.Fatalf("runPrompts: %v", err)
+		}
+		if len(fake.calls) != 0 {
+			t.Errorf("expected no prompts, got %d", len(fake.calls))
+		}
+		if got["apikey"] != "k" {
+			t.Errorf("apikey = %q, want k", got["apikey"])
+		}
+	})
+
+	t.Run("empty answer accepted", func(t *testing.T) {
+		fake := &fakePrompter{answers: []string{""}}
+		var buf bytes.Buffer
+		got, err := runPrompts(japanfanLikeDef(), map[string]string{"username": "a"}, fake, &buf)
+		if err != nil {
+			t.Fatalf("runPrompts: %v", err)
+		}
+		if got["password"] != "" {
+			t.Errorf("password = %q, want empty", got["password"])
+		}
+	})
+
+	t.Run("prompter error propagates with setting name", func(t *testing.T) {
+		fake := &fakePrompter{err: errors.New("boom")}
+		var buf bytes.Buffer
+		_, err := runPrompts(japanfanLikeDef(), nil, fake, &buf)
+		if err == nil || !strings.Contains(err.Error(), "username") {
+			t.Errorf("expected error mentioning username, got %v", err)
+		}
+	})
+
+	t.Run("two info settings printed once each", func(t *testing.T) {
+		def := definition.IndexerDefinition{Settings: []definition.Setting{
+			{Name: "info1", Type: "info", Default: "HELP ONE"},
+			{Name: "user", Type: "text", Label: "User"},
+			{Name: "info2", Type: "info", Default: "HELP TWO"},
+			{Name: "pass", Type: "password", Label: "Pass"},
+		}}
+		fake := &fakePrompter{answers: []string{"u", "p"}}
+		var buf bytes.Buffer
+		if _, err := runPrompts(def, nil, fake, &buf); err != nil {
+			t.Fatalf("runPrompts: %v", err)
+		}
+		out := buf.String()
+		if strings.Count(out, "HELP ONE") != 1 || strings.Count(out, "HELP TWO") != 1 {
+			t.Errorf("info help printed wrong number of times: %q", out)
+		}
+	})
+}
+
+func TestPrintSettingsSummary(t *testing.T) {
+	t.Run("password masked, definition order", func(t *testing.T) {
+		var buf bytes.Buffer
+		printSettingsSummary(japanfanLikeDef(), map[string]string{"password": "s3cret", "username": "alice"}, &buf)
+		out := buf.String()
+		if strings.Contains(out, "s3cret") {
+			t.Errorf("password leaked: %q", out)
+		}
+		if !strings.Contains(out, "*****") {
+			t.Errorf("expected masked password: %q", out)
+		}
+		// definition order: Username before Password
+		ui, pi := strings.Index(out, "Username"), strings.Index(out, "Password")
+		if ui < 0 || pi < 0 || ui > pi {
+			t.Errorf("definition order not preserved: %q", out)
+		}
+	})
+
+	t.Run("label fallback to name", func(t *testing.T) {
+		def := definition.IndexerDefinition{Settings: []definition.Setting{
+			{Name: "apikey", Type: "text"},
+		}}
+		var buf bytes.Buffer
+		printSettingsSummary(def, map[string]string{"apikey": "k"}, &buf)
+		if !strings.Contains(buf.String(), "apikey: k") {
+			t.Errorf("expected name fallback: %q", buf.String())
+		}
+	})
+
+	t.Run("unknown key listed after, sorted", func(t *testing.T) {
+		var buf bytes.Buffer
+		printSettingsSummary(japanfanLikeDef(), map[string]string{"username": "a", "zzz": "v", "mmm": "v"}, &buf)
+		out := buf.String()
+		if strings.Index(out, "mmm: v") > strings.Index(out, "zzz: v") {
+			t.Errorf("extra keys not sorted: %q", out)
+		}
+	})
+
+	t.Run("empty map silent", func(t *testing.T) {
+		var buf bytes.Buffer
+		printSettingsSummary(japanfanLikeDef(), nil, &buf)
+		if buf.Len() != 0 {
+			t.Errorf("expected no output, got %q", buf.String())
+		}
+	})
 }
