@@ -35,8 +35,8 @@ type Provider struct {
 // http.DefaultTransport's tight per-host limit. Proxy: ProxyFromEnvironment
 // preserves the default transport's env-var proxy behavior.
 var sharedTransport = &http.Transport{
-	Proxy:              http.ProxyFromEnvironment,
-	MaxIdleConns:       100,
+	Proxy:               http.ProxyFromEnvironment,
+	MaxIdleConns:        100,
 	MaxIdleConnsPerHost: 10,
 	IdleConnTimeout:     90 * time.Second,
 }

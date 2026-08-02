@@ -156,7 +156,7 @@ func TestEngine_CapsResultsPerProvider(t *testing.T) {
 	releases := make([]model.ReleaseInfo, 0, 150)
 	for i := 0; i < 150; i++ {
 		releases = append(releases, model.ReleaseInfo{
-			Title:   fmt.Sprintf("R%d", i),
+			Title:    fmt.Sprintf("R%d", i),
 			InfoHash: fmt.Sprintf("%040d", i),
 		})
 	}

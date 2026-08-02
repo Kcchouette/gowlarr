@@ -1,7 +1,6 @@
 package service
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/config"
@@ -16,13 +15,4 @@ func TestEffectiveProxyURLPrefersIndexerSpecific(t *testing.T) {
 	if got := effectiveProxyURL("socks5://indexer.proxy:1080", cfg); got != "socks5://indexer.proxy:1080" {
 		t.Fatalf("effectiveProxyURL(indexer) = %q, want %q", got, "socks5://indexer.proxy:1080")
 	}
-}
-
-func containsAll(s string, parts ...string) bool {
-	for _, part := range parts {
-		if !strings.Contains(s, part) {
-			return false
-		}
-	}
-	return true
 }

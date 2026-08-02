@@ -261,5 +261,7 @@ func storeETag(dir string, etag string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
 	}
-	_ = os.WriteFile(path, []byte(etag), 0o600)
+	if err := os.WriteFile(path, []byte(etag), 0o600); err != nil {
+		return
+	}
 }

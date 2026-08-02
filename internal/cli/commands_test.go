@@ -87,7 +87,8 @@ func TestIndexerAddCmdNoDefinitionFound(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "no definition found") {
 		t.Fatalf("expected 'no definition found' error, got %v", err)
 	}
-	if err == nil || !strings.Contains(err.Error(), "defs sync") {
+	// err is guaranteed non-nil here (t.Fatalf above exits otherwise).
+	if !strings.Contains(err.Error(), "defs sync") {
 		t.Fatalf("expected 'defs sync' suggestion in error, got %v", err)
 	}
 }

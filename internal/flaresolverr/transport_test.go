@@ -12,7 +12,7 @@ import (
 // countingReadCloser wraps a reader and counts Read calls, so tests can
 // assert whether RoundTrip buffered the body or passed it through untouched.
 type countingReadCloser struct {
-	r        io.Reader
+	r         io.Reader
 	readCalls int
 }
 
