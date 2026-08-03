@@ -268,11 +268,11 @@ func TestResolveDefinition_LocalPriority(t *testing.T) {
 	st := openTestStore(t)
 	svc := NewIndexerService(st, testConfig())
 
-	ddlYAML := `id: japanfan
-name: JapanFan
+	ddlYAML := `id: ddldemo
+name: DDL Demo
 type: ddl
 links:
-  - https://japanfan.org/phpBB3/
+  - https://example.invalid/
 search:
   paths:
     - path: /search
@@ -286,16 +286,16 @@ search:
 `
 
 	// Same definition ID in the v11 corpus and in the local definitions.
-	if err := svc.store.SaveDefinition("japanfan", "v11", "sha-v11", ddlYAML); err != nil {
+	if err := svc.store.SaveDefinition("ddldemo", "v11", "sha-v11", ddlYAML); err != nil {
 		t.Fatalf("SaveDefinition v11: %v", err)
 	}
-	if err := svc.store.SaveDefinition("japanfan", "local", "sha-local", ddlYAML); err != nil {
+	if err := svc.store.SaveDefinition("ddldemo", "local", "sha-local", ddlYAML); err != nil {
 		t.Fatalf("SaveDefinition local: %v", err)
 	}
 
 	// Resolving without a version must pick the local definition (priority)
 	// and deduplicate by ID.
-	results, err := svc.ResolveDefinition("japanfan", "")
+	results, err := svc.ResolveDefinition("ddldemo", "")
 	if err != nil {
 		t.Fatalf("ResolveDefinition: %v", err)
 	}
@@ -307,7 +307,7 @@ search:
 	}
 
 	// Add without a version resolves the local definition and records ddl.
-	if err := svc.Add("japanfan", "", "", "", nil); err != nil {
+	if err := svc.Add("ddldemo", "", "", "", nil); err != nil {
 		t.Fatalf("Add: %v", err)
 	}
 	configs, err := svc.List(false)

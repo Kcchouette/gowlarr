@@ -12,12 +12,12 @@ import (
 	"github.com/Kcchouette/cardigann-go/definition"
 )
 
-func japanfanLikeDef() definition.IndexerDefinition {
+func credsLikeDef() definition.IndexerDefinition {
 	return definition.IndexerDefinition{
 		Settings: []definition.Setting{
 			{Name: "username", Type: "text", Label: "Username"},
 			{Name: "password", Type: "password", Label: "Password"},
-			{Name: "info_sitelink", Type: "info", Label: "Site", Default: "https://japanfan.org/phpBB3/"},
+			{Name: "info_sitelink", Type: "info", Label: "Site", Default: "https://example.invalid/forum/"},
 		},
 	}
 }
@@ -43,26 +43,26 @@ func TestRequiredSettings(t *testing.T) {
 		want     []string
 	}{
 		{
-			"japanfan nothing provided",
-			japanfanLikeDef(),
+			"creds nothing provided",
+			credsLikeDef(),
 			nil,
 			[]string{"username", "password"},
 		},
 		{
-			"japanfan username provided",
-			japanfanLikeDef(),
+			"creds username provided",
+			credsLikeDef(),
 			map[string]string{"username": "alice"},
 			[]string{"password"},
 		},
 		{
-			"japanfan all provided",
-			japanfanLikeDef(),
+			"creds all provided",
+			credsLikeDef(),
 			map[string]string{"username": "alice", "password": "secret"},
 			nil,
 		},
 		{
-			"japanfan empty value counts as provided",
-			japanfanLikeDef(),
+			"creds empty value counts as provided",
+			credsLikeDef(),
 			map[string]string{"password": ""},
 			[]string{"username"},
 		},
@@ -205,7 +205,7 @@ func TestRunPrompts(t *testing.T) {
 	t.Run("no required settings", func(t *testing.T) {
 		fake := &fakePrompter{}
 		var buf bytes.Buffer
-		got, err := runPrompts(japanfanLikeDef(), map[string]string{"username": "a", "password": "b"}, fake, &buf)
+		got, err := runPrompts(credsLikeDef(), map[string]string{"username": "a", "password": "b"}, fake, &buf)
 		if err != nil {
 			t.Fatalf("runPrompts: %v", err)
 		}
@@ -217,10 +217,10 @@ func TestRunPrompts(t *testing.T) {
 		}
 	})
 
-	t.Run("japanfan prompts in order with masked password and info once", func(t *testing.T) {
+	t.Run("creds prompts in order with masked password and info once", func(t *testing.T) {
 		fake := &fakePrompter{answers: []string{"alice", "s3cret"}}
 		var buf bytes.Buffer
-		got, err := runPrompts(japanfanLikeDef(), nil, fake, &buf)
+		got, err := runPrompts(credsLikeDef(), nil, fake, &buf)
 		if err != nil {
 			t.Fatalf("runPrompts: %v", err)
 		}
@@ -234,7 +234,7 @@ func TestRunPrompts(t *testing.T) {
 		if got["username"] != "alice" || got["password"] != "s3cret" {
 			t.Errorf("merged = %v", got)
 		}
-		if n := strings.Count(buf.String(), "https://japanfan.org/phpBB3/"); n != 1 {
+		if n := strings.Count(buf.String(), "https://example.invalid/forum/"); n != 1 {
 			t.Errorf("info help printed %d times, want 1", n)
 		}
 	})
@@ -257,7 +257,7 @@ func TestRunPrompts(t *testing.T) {
 	t.Run("empty answer accepted", func(t *testing.T) {
 		fake := &fakePrompter{answers: []string{""}}
 		var buf bytes.Buffer
-		got, err := runPrompts(japanfanLikeDef(), map[string]string{"username": "a"}, fake, &buf)
+		got, err := runPrompts(credsLikeDef(), map[string]string{"username": "a"}, fake, &buf)
 		if err != nil {
 			t.Fatalf("runPrompts: %v", err)
 		}
@@ -269,7 +269,7 @@ func TestRunPrompts(t *testing.T) {
 	t.Run("prompter error propagates with setting name", func(t *testing.T) {
 		fake := &fakePrompter{err: errors.New("boom")}
 		var buf bytes.Buffer
-		_, err := runPrompts(japanfanLikeDef(), nil, fake, &buf)
+		_, err := runPrompts(credsLikeDef(), nil, fake, &buf)
 		if err == nil || !strings.Contains(err.Error(), "username") {
 			t.Errorf("expected error mentioning username, got %v", err)
 		}
@@ -297,7 +297,7 @@ func TestRunPrompts(t *testing.T) {
 func TestPrintSettingsSummary(t *testing.T) {
 	t.Run("password masked, definition order", func(t *testing.T) {
 		var buf bytes.Buffer
-		printSettingsSummary(japanfanLikeDef(), map[string]string{"password": "s3cret", "username": "alice"}, &buf)
+		printSettingsSummary(credsLikeDef(), map[string]string{"password": "s3cret", "username": "alice"}, &buf)
 		out := buf.String()
 		if strings.Contains(out, "s3cret") {
 			t.Errorf("password leaked: %q", out)
@@ -325,7 +325,7 @@ func TestPrintSettingsSummary(t *testing.T) {
 
 	t.Run("unknown key listed after, sorted", func(t *testing.T) {
 		var buf bytes.Buffer
-		printSettingsSummary(japanfanLikeDef(), map[string]string{"username": "a", "zzz": "v", "mmm": "v"}, &buf)
+		printSettingsSummary(credsLikeDef(), map[string]string{"username": "a", "zzz": "v", "mmm": "v"}, &buf)
 		out := buf.String()
 		if strings.Index(out, "mmm: v") > strings.Index(out, "zzz: v") {
 			t.Errorf("extra keys not sorted: %q", out)
@@ -334,7 +334,7 @@ func TestPrintSettingsSummary(t *testing.T) {
 
 	t.Run("empty map silent", func(t *testing.T) {
 		var buf bytes.Buffer
-		printSettingsSummary(japanfanLikeDef(), nil, &buf)
+		printSettingsSummary(credsLikeDef(), nil, &buf)
 		if buf.Len() != 0 {
 			t.Errorf("expected no output, got %q", buf.String())
 		}

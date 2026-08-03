@@ -47,6 +47,26 @@ func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseI
 	return ToReleaseInfos(releases), nil
 }
 
+// ResolveDownloadLink runs the definition's download.before chain starting
+// from the release's stored link, revealing the actual DDL link. The chain
+// may perform a side-effecting action (e.g. a "thanks" POST) and therefore
+// runs only at explicit link/download time, never during search.
+func (p *Provider) ResolveDownloadLink(ctx context.Context, rel model.ReleaseInfo) (model.ReleaseInfo, error) {
+	crel := cardigannrelease.Release{Title: rel.Title, DownloadLink: rel.DownloadLink}
+	resolved, err := p.inner.ResolveDownloadLink(ctx, crel)
+	if err != nil {
+		return rel, err
+	}
+	rel.DownloadLink = resolved.DownloadLink
+	rel.InfoHash = resolved.InfoHash
+	rel.Unlocked = resolved.Unlocked
+	if resolved.Title != "" {
+		rel.Title = resolved.Title
+	}
+	rel.Hosts = append([]string(nil), resolved.Hosts...)
+	return rel, nil
+}
+
 func ToReleaseInfos(releases []cardigannrelease.Release) []model.ReleaseInfo {
 	out := make([]model.ReleaseInfo, 0, len(releases))
 	for _, r := range releases {

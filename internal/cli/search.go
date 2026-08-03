@@ -58,6 +58,7 @@ links and file hosts (no automatic download).`,
 				NewznabName:   newznabName,
 				IndexerID:     indexerID,
 				Protocol:      model.Protocol(protocol),
+				ResolveLinks:  linksOutput,
 			})
 			if err != nil {
 				return err

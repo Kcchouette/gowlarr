@@ -10,7 +10,6 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/model"
 	"github.com/Kcchouette/gowlarr/internal/newznab"
 	"github.com/Kcchouette/gowlarr/internal/search"
-	"github.com/Kcchouette/gowlarr/internal/search/providers/apibay"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
@@ -28,6 +27,10 @@ type SearchParams struct {
 	IndexerID string
 	// Protocol restricts the results to one protocol ("" = all).
 	Protocol model.Protocol
+	// ResolveLinks runs each result's download chain (download.before, e.g.
+	// a "thanks" POST unlocking hidden DDL links) after the search. The
+	// chain is side-effecting and must only run on explicit request.
+	ResolveLinks bool
 }
 
 // SearchResult contains the results of a search.
@@ -56,21 +59,15 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 		slog.Debug("purge expired results", "duration", time.Since(purgeStart))
 	}
 
-	providers := []search.Provider{apibay.New()}
-
-	if params.IndexerID == "" {
-		// Generic providers (apibay, ad-hoc newznab) only participate when
-		// no specific configured indexer is requested.
-		if params.NewznabURL != "" && params.NewznabAPIKey != "" {
-			name := params.NewznabName
-			if name == "" {
-				name = "newznab-generic"
-			}
-			providers = append(providers, newznab.NewWithOverrides(name, name, params.NewznabURL, params.NewznabAPIKey, s.cfg.DNSOverrides))
+	// No default indexers: only explicitly configured (enabled) indexers and
+	// an ad-hoc newznab are queried.
+	var providers []search.Provider
+	if params.IndexerID == "" && params.NewznabURL != "" && params.NewznabAPIKey != "" {
+		name := params.NewznabName
+		if name == "" {
+			name = "newznab-generic"
 		}
-	} else {
-		// No generic providers when a specific indexer is targeted.
-		providers = nil
+		providers = append(providers, newznab.NewWithOverrides(name, name, params.NewznabURL, params.NewznabAPIKey, s.cfg.DNSOverrides))
 	}
 
 	configured, err := BuildConfiguredProviders(s.store, s.cfg)
@@ -97,6 +94,9 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 	})
 
 	releases := result.Releases
+	if params.ResolveLinks {
+		releases = s.resolveLinks(ctx, providers, releases)
+	}
 	if params.Protocol != "" {
 		filtered := releases[:0]
 		for _, r := range releases {
@@ -113,4 +113,38 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 	}
 
 	return SearchResult{Releases: saved, Errors: result.Errors}, nil
+}
+
+// linkResolver is implemented by providers whose download chain (e.g. a
+// "thanks" POST) can be run on demand to reveal the actual DDL links.
+type linkResolver interface {
+	ResolveDownloadLink(ctx context.Context, rel model.ReleaseInfo) (model.ReleaseInfo, error)
+}
+
+// resolveLinks runs each result's download chain through its provider,
+// revealing the actual links. Failures are logged and the raw link is kept:
+// a broken chain must never fail the whole search.
+func (s *SearchService) resolveLinks(ctx context.Context, providers []search.Provider, releases []model.ReleaseInfo) []model.ReleaseInfo {
+	byID := make(map[string]linkResolver, len(providers))
+	for _, p := range providers {
+		if lr, ok := p.(linkResolver); ok {
+			byID[p.ID()] = lr
+		}
+	}
+	out := make([]model.ReleaseInfo, 0, len(releases))
+	for _, rel := range releases {
+		resolver, ok := byID[rel.IndexerID]
+		if !ok {
+			out = append(out, rel)
+			continue
+		}
+		resolved, err := resolver.ResolveDownloadLink(ctx, rel)
+		if err != nil {
+			slog.Warn("resolving download link", "indexer", rel.IndexerID, "title", rel.Title, "err", err)
+			out = append(out, rel)
+			continue
+		}
+		out = append(out, resolved)
+	}
+	return out
 }

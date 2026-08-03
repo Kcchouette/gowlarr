@@ -68,11 +68,11 @@ func TestResults_SaveAndGetDDLFields(t *testing.T) {
 
 	results := []model.ReleaseInfo{
 		{
-			Title:        "Bleach 01",
+			Title:        "Demo Release 01",
 			DownloadLink: "https://www.uptobox.com/abc123",
 			Protocol:     model.ProtocolDDL,
-			IndexerID:    "japanfan",
-			IndexerName:  "JapanFan",
+			IndexerID:    "ddldemo",
+			IndexerName:  "DDLDemo",
 			Hosts:        []string{"uptobox.com"},
 			Unlocked:     true,
 		},

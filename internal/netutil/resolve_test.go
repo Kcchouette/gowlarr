@@ -22,8 +22,8 @@ func TestOverrideDialContext(t *testing.T) {
 		t.Fatalf("overridden host should dial the fixed IP with original port, got %v", dialed)
 	}
 
-	_, _ = dial(context.Background(), "tcp", "japanfan.org:80")
-	if len(dialed) != 2 || dialed[1] != "japanfan.org:80" {
+	_, _ = dial(context.Background(), "tcp", "othersite.example:80")
+	if len(dialed) != 2 || dialed[1] != "othersite.example:80" {
 		t.Fatalf("non-overridden host should be delegated unchanged, got %v", dialed)
 	}
 }

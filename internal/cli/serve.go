@@ -14,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/Kcchouette/gowlarr/internal/search"
-	"github.com/Kcchouette/gowlarr/internal/search/providers/apibay"
 	"github.com/Kcchouette/gowlarr/internal/server"
 	"github.com/Kcchouette/gowlarr/internal/service"
 )
@@ -47,7 +46,8 @@ for integration with Sonarr, Radarr, or any other compatible client.`,
 						"or pass --insecure-public to accept this risk explicitly", addr)
 			}
 
-			providers := []search.Provider{apibay.New()}
+			// No default indexers: only configured (enabled) indexers are queried.
+			var providers []search.Provider
 
 			configured, err := service.BuildConfiguredProviders(st, cfg)
 			if err != nil {

@@ -18,6 +18,10 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
+// browserUA masks gowlarr as a regular browser: some WAF-protected sites
+// return 503 to Go's default User-Agent.
+const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
+
 // applyDNSOverrides clones the client's transport with a DialContext that
 // forces DNS resolution of the overridden hostnames to fixed IPs (equivalent
 // to curl's --resolve). It only acts when overrides are non-empty and the
@@ -86,6 +90,10 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 		// FlareSolverr transport wraps the underlying transport.
 		applyDNSOverrides(client, cfg.DNSOverrides)
 
+		// Mask as a regular browser: some WAF-protected sites reject Go's
+		// default User-Agent with a 503.
+		client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
+
 		// Inject FlareSolverr transport if configured
 		if flareClient != nil {
 			transport := &flaresolverr.FlareSolverrTransport{
@@ -95,8 +103,12 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			client.HTTPClient().Transport = transport
 		}
 
-		providers = append(providers, cardigannadapter.NewProvider(
-			cardigannengine.NewAuthenticatedProvider(def, def.Links[0], idxCfg.Settings, client)))
+		// Download chains (e.g. a "thanks" POST that unlocks hidden DDL
+		// links) must not run during search: they resolve only when the user
+		// explicitly requests the links (--links / download).
+		inner := cardigannengine.NewAuthenticatedProvider(def, def.Links[0], idxCfg.Settings, client)
+		inner.SkipSearchDownload()
+		providers = append(providers, cardigannadapter.NewProvider(inner))
 	}
 	return providers, nil
 }
@@ -130,6 +142,10 @@ func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg stor
 
 	applyDNSOverrides(client, appCfg.DNSOverrides)
 
-	return cardigannadapter.NewProvider(
-		cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)), nil
+	// Mask as a regular browser (same rationale as BuildConfiguredProviders).
+	client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
+
+	inner := cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)
+	inner.SkipSearchDownload()
+	return cardigannadapter.NewProvider(inner), nil
 }
