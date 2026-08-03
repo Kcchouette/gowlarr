@@ -1,16 +1,52 @@
 ---
 feature: search-results-quality
-status: in-progress
+status: delivered
 updated: 2026-08-03
 branch: search-results-quality
-commits: pending
+commits: 7f8530c..d9cd93b
 ---
 
 # Search Results Quality
 
 ## Report
 
-<!-- filled at delivery -->
+**What was built** — Three coordinated fixes make `gowlarr search` results
+usable for the The Lost Space indexer (MyBB usenet forum). The engine now
+drops releases with no usable link (`DownloadLink`/`InfoHash`/`StreamURL`
+all empty) inside the per-provider goroutine, before the per-provider cap,
+so linkless junk never consumes the result budget. The indexer definition
+(edited in the gitignored `definitions-local/`, mirrored by a CI-runnable
+inline fixture) switches to MyBB's advanced thread search
+(`showresults=threads`) restricted to release forums via the array-form
+`forums[]` parameter (a scalar comma list silently collapses to the first
+fid), and extracts the last-post date from the 7th `<td>` with a `regexp`
+capture + `dateparse`. A top-level `download:` chain resolves the real NZB
+link on demand (`--links`) by following the thread page and extracting the
+`attachment.php` link, which the adapter absolutizes against the definition
+base URL.
+
+**Verification** — `go test -race -count=1 ./...` (16 packages), `go vet
+./...` and `golangci-lint run ./...` all green. Live against the real site:
+search returns rows with AGE 2mo–6mo and exact `publish_date`
+(`2026-05-11T16:20:00Z`); a broad query returns only release-forum fids
+(43, 46, 47, 48, 57) with no community threads; `--links` shows absolutized
+`https://thelostspace.xyz/attachment.php?aid=6840` (matching a manual fetch
+of the thread page).
+
+**Journey log** — MyBB casts a scalar `forums` param to `int`, so
+`forums=4,5,8,25,70,75` silently searched only fid 4; the array form was
+required. The cardigann engine returns raw relative hrefs from download
+chains and never absolutizes them; gowlarr's download resolver rejects
+relative URLs, so absolutization must happen in the adapter (and only on
+`ResolveDownloadLink` output — absolutizing search-time thread URLs would
+make `gowlarr download` silently save HTML as `.nzb`). The engine's
+`SkipSearchDownload` is unconditional for configured indexers, so a
+search-time NZB chain was impossible without changing that contract; the
+category-based filter made it unnecessary. Pre-existing, untouched: the
+`--indexer` flag compares the definition id (`thelostspace`) with the
+configured instance id (`thelostspace.xyz`) and never matches cardigann
+providers, and the `.gitignore` pattern `gowlarr` (intended for the binary)
+also ignores the `cmd/gowlarr/` package directory.
 
 ## [S1] Problem
 
@@ -94,5 +130,5 @@ HTML with the stored session):
   absolutization) — acceptance: `go test -race -count=1
   ./internal/cardigannadapter/ -run TheLostSpace` green, live search shows
   AGE dates and no community rows (covers: S2; depends: T2)
-- [ ] T4: spec finalization + full verification matrix — acceptance: full
+- [x] T4: spec finalization + full verification matrix — acceptance: full
   suite/vet/lint green, live checks recorded (covers: S1-S3; depends: T3)
