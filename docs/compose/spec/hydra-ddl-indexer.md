@@ -1,16 +1,55 @@
 ---
 feature: hydra-ddl-indexer
-status: in-progress
+status: delivered
 updated: 2026-08-03
 branch: hydra-ddl
-commits: # filled at delivery
+commits: 6698d89..1f7c572
 ---
 
 # Hydra DDL Indexer
 
 ## Report
 
-<!-- filled at delivery -->
+**What was built** — Hydra's Direct-Download section is now searchable from
+gowlarr via the new `hydraddl` definition (`type: ddl`), backed by a new
+`search.before` capability in the cardigann-go fork. `search.before` runs a
+pre-search request chain whose named selectors capture values into the
+template context as `{{ .Before.<name>.<key> }}`: hydraddl resolves the best
+matching title id from the public `titles?query=` search, then lists every
+DDL lien of that title (`api/v1/titles/{id}/content/liens?loader=linksdl`,
+Bearer PAT header) in one search — one result per episode/full-season ×
+quality × host, with size (raw bytes), publish date, category (title type
+mapped via `case`, TV=5000…) and an absolute link to the public download
+page. Real 1Fichier URL resolution stays out of reach (premium-only API +
+Cloudflare Turnstile), so rows are display-only and open in the browser.
+The engine also now propagates the extracted `category` field into
+`Release.Categories` (previously never populated).
+
+**Verification** — fork: `go vet ./...` PASS, `go test -race -count=1
+./...` PASS (12 packages, incl. `definition/searchbefore_test.go` and
+`engine/engine_searchbefore_test.go`). gowlarr: `go vet ./...` PASS, `go
+test -count=1 ./...` PASS (15 packages, incl.
+`internal/cardigannadapter/hydraddl_test.go`), run against the fork worktree
+via a temporary modfile (repo `go.mod` untouched). Live against the real
+site (sandbox DNS override for hydracker.com): `gowlarr search "house of
+the dragon" --indexer hydraddl` returns rows like "House of the Dragon
+S1E9 - Blu-Ray 1080p [1Fichier]" with exact sizes, dates, Categories
+[5000] and absolute download-page links (10 rows — the pre-existing
+per-provider cap); `--season 2` filters to season 2; `--links` shows the
+display-only page URLs.
+
+**Journey log** — The SPA JSON API only answers under `/api/v1/` and with
+`Accept: application/json` (the axios interceptor injects both); the
+definition needs both the prefix and the header. The real link endpoint
+`content/liens/{id}` is gated by premium (`premium_required`) AND a
+Cloudflare Turnstile token — a hard wall for free accounts, hence the
+display-only design. `.Result` is a flat map of declared fields only: nested
+`qual.qual` access is impossible and `"0"` is truthy, so the row templates
+use flat `_`-prefixed helper fields and `eq .Result._full_saison "1"`.
+Independent review caught that `Context.Before` must be a nested map
+(`map[string]map[string]string`) for `{{ .Before.title.id }}` to render, and
+that `Search.UnmarshalYAML` mirrors fields explicitly — a new `Search` field
+must be added there or it is silently dropped.
 
 ## [S1] Problem
 
@@ -139,29 +178,29 @@ validated by two independent reviews):
 
 ## Tasks
 
-- [ ] T1: fork `search.before` — definition structs + dual-form parsing +
+- [x] T1: fork `search.before` — definition structs + dual-form parsing +
   `Context.Before` + engine `runSearchBefore` + tests (single/list, JSON/
   HTML/POST, chained steps, header templating, empty-search gate, soft-fail
   semantics, name validation, regression) — acceptance: `go test ./...` and
   `go vet ./...` green in the fork (covers: S2)
-- [ ] T2: `definitions-local/hydraddl.yml` per the S2 contract — acceptance:
+- [x] T2: `definitions-local/hydraddl.yml` per the S2 contract — acceptance:
   `gowlarr defs sync && gowlarr defs list` shows it and `defs show hydraddl`
   resolves; the only `Validate()` warning is the expected
   "ddl definition without download field" (by design: no resolution chain,
   rows link to the public download page). The file is gitignored
   (`definitions-local/`), so the shipped artifact is the inline fixture in
   T3 (covers: S2; depends: T1)
-- [ ] T3: gowlarr adapter fixture test (two-step API server, Bearer header,
+- [x] T3: gowlarr adapter fixture test (two-step API server, Bearer header,
   rows/fields, zero-results on no match, error surfaced on 401) —
   acceptance: `go test ./internal/cardigannadapter/` green (covers: S2;
   depends: T1)
-- [ ] T4: live verification against hydracker.com with the provided PAT —
+- [x] T4: live verification against hydracker.com with the provided PAT —
   acceptance: `gowlarr search "house of the dragon" --indexer hydraddl`
   returns rows (up to the pre-existing per-provider cap of 10,
   `defaultMaxResultsPerProvider`) with correct sizes/dates/categories (5000)
   and absolute download-page links, matching the raw
   `api/v1/titles/179751/content/liens?loader=linksdl` response (226 liens);
   `--season 2` filters to season 2 (covers: S2; depends: T2, T3)
-- [ ] T5: spec finalization (delivered) + full verification matrix recorded —
+- [x] T5: spec finalization (delivered) + full verification matrix recorded —
   acceptance: full suites green, live checks recorded (covers: S1-S3;
   depends: T4)
