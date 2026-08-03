@@ -145,17 +145,23 @@ validated by two independent reviews):
   semantics, name validation, regression) — acceptance: `go test ./...` and
   `go vet ./...` green in the fork (covers: S2)
 - [ ] T2: `definitions-local/hydraddl.yml` per the S2 contract — acceptance:
-  `gowlarr defs sync && gowlarr defs list` shows it, `defs show hydraddl`
-  parses without warnings (covers: S2; depends: T1)
+  `gowlarr defs sync && gowlarr defs list` shows it and `defs show hydraddl`
+  resolves; the only `Validate()` warning is the expected
+  "ddl definition without download field" (by design: no resolution chain,
+  rows link to the public download page). The file is gitignored
+  (`definitions-local/`), so the shipped artifact is the inline fixture in
+  T3 (covers: S2; depends: T1)
 - [ ] T3: gowlarr adapter fixture test (two-step API server, Bearer header,
   rows/fields, zero-results on no match, error surfaced on 401) —
   acceptance: `go test ./internal/cardigannadapter/` green (covers: S2;
   depends: T1)
 - [ ] T4: live verification against hydracker.com with the provided PAT —
   acceptance: `gowlarr search "house of the dragon" --indexer hydraddl`
-  returns ~226 rows with correct sizes/dates/categories and absolute
-  download-page links, matching the raw `titles/179751/content/liens?loader=linksdl`
-  response (covers: S2; depends: T2, T3)
+  returns rows (up to the pre-existing per-provider cap of 10,
+  `defaultMaxResultsPerProvider`) with correct sizes/dates/categories (5000)
+  and absolute download-page links, matching the raw
+  `api/v1/titles/179751/content/liens?loader=linksdl` response (226 liens);
+  `--season 2` filters to season 2 (covers: S2; depends: T2, T3)
 - [ ] T5: spec finalization (delivered) + full verification matrix recorded —
   acceptance: full suites green, live checks recorded (covers: S1-S3;
   depends: T4)

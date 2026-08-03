@@ -236,7 +236,10 @@ func TestHydraDdlDefinition_NoTitleMatch(t *testing.T) {
 	}
 }
 
-func TestHydraDdlDefinition_Unauthorized(t *testing.T) {
+// The liens request answers 401: the search path failure must surface as an
+// error, not a silent empty result. (A 401 on the search.before step itself
+// is covered by the fork engine test TestSearchBefore_HTTPFailure_AbortsWithError.)
+func TestHydraDdlDefinition_SearchPathUnauthorized(t *testing.T) {
 	server, _, _ := hydraddlServer(t, hydraddlTitleJSON, hydraddlLiensJSON, http.StatusUnauthorized, "")
 	defer server.Close()
 
