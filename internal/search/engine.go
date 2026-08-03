@@ -87,6 +87,16 @@ func (e *Engine) Search(ctx context.Context, q Query) Result {
 			defer cancel()
 
 			releases, err := p.Search(pctx, q)
+			// Drop linkless rows before the per-provider cap so junk (e.g.
+			// forum threads without a download link) never consumes the
+			// result budget.
+			kept := releases[:0]
+			for _, r := range releases {
+				if hasUsableLink(r) {
+					kept = append(kept, r)
+				}
+			}
+			releases = kept
 			if len(releases) > maxPerProvider {
 				releases = releases[:maxPerProvider]
 			}
@@ -125,9 +135,17 @@ func (e *Engine) Search(ctx context.Context, q Query) Result {
 	return result
 }
 
+// hasUsableLink reports whether the release carries something a consumer can
+// act on: a direct link, a magnet InfoHash, or a stream URL. Hosts and
+// Unlocked are resolution metadata, not links.
+func hasUsableLink(r model.ReleaseInfo) bool {
+	return r.DownloadLink != "" || r.InfoHash != "" || r.StreamURL != ""
+}
+
 // dedupReleases removes duplicates across providers: a release is a duplicate
 // if its InfoHash (or, when empty, its DownloadLink) was already seen.
-// Releases with neither key are always kept.
+// Releases without either key (possible for stream-only rows, which survive
+// the usable-link filter) are always kept.
 func dedupReleases(releases []model.ReleaseInfo) []model.ReleaseInfo {
 	seen := make(map[string]struct{}, len(releases))
 	deduped := releases[:0]

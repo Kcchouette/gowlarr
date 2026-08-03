@@ -21,6 +21,7 @@ func BenchmarkEngineSearch_N10(b *testing.B) {
 				Title:       fmt.Sprintf("Release %d-%d", i, j),
 				PublishDate: time.Date(2024, 1, 1, 0, 0, j, 0, time.UTC),
 				Seeders:     j,
+				InfoHash:    fmt.Sprintf("%040d", i*20+j),
 			})
 		}
 		providers = append(providers, &fakeProvider{id: fmt.Sprintf("p%d", i), releases: releases})

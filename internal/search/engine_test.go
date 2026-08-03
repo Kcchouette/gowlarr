@@ -39,10 +39,10 @@ func TestEngine_AggregatesAndSortsResults(t *testing.T) {
 	t2 := time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)
 
 	p1 := &fakeProvider{id: "p1", releases: []model.ReleaseInfo{
-		{Title: "Old", PublishDate: t1, Seeders: 100},
+		{Title: "Old", PublishDate: t1, Seeders: 100, InfoHash: "0000000000000000000000000000000000000001"},
 	}}
 	p2 := &fakeProvider{id: "p2", releases: []model.ReleaseInfo{
-		{Title: "New", PublishDate: t2, Seeders: 1},
+		{Title: "New", PublishDate: t2, Seeders: 1, InfoHash: "0000000000000000000000000000000000000002"},
 	}}
 
 	engine := NewEngine([]Provider{p1, p2})
@@ -62,8 +62,8 @@ func TestEngine_AggregatesAndSortsResults(t *testing.T) {
 func TestEngine_SortsBySeedersWhenSameDate(t *testing.T) {
 	date := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	p := &fakeProvider{id: "p", releases: []model.ReleaseInfo{
-		{Title: "LowSeeders", PublishDate: date, Seeders: 5},
-		{Title: "HighSeeders", PublishDate: date, Seeders: 50},
+		{Title: "LowSeeders", PublishDate: date, Seeders: 5, InfoHash: "0000000000000000000000000000000000000003"},
+		{Title: "HighSeeders", PublishDate: date, Seeders: 50, InfoHash: "0000000000000000000000000000000000000004"},
 	}}
 
 	engine := NewEngine([]Provider{p})
@@ -75,7 +75,7 @@ func TestEngine_SortsBySeedersWhenSameDate(t *testing.T) {
 }
 
 func TestEngine_PartialFailureIsVisiblePerProvider(t *testing.T) {
-	good := &fakeProvider{id: "good", releases: []model.ReleaseInfo{{Title: "OK"}}}
+	good := &fakeProvider{id: "good", releases: []model.ReleaseInfo{{Title: "OK", InfoHash: "0000000000000000000000000000000000000005"}}}
 	bad := &fakeProvider{id: "bad", err: errors.New("connection refused")}
 
 	engine := NewEngine([]Provider{good, bad})
@@ -134,7 +134,7 @@ func (h *hangingProvider) Search(context.Context, Query) ([]model.ReleaseInfo, e
 }
 
 func TestEngine_ReturnsOnDeadline_EvenIfProviderHangs(t *testing.T) {
-	fast := &fakeProvider{id: "fast", releases: []model.ReleaseInfo{{Title: "OK"}}}
+	fast := &fakeProvider{id: "fast", releases: []model.ReleaseInfo{{Title: "OK", InfoHash: "0000000000000000000000000000000000000006"}}}
 	engine := NewEngine([]Provider{fast, &hangingProvider{id: "hung"}})
 	engine.PerProviderTTL = 100 * time.Millisecond // engine deadline = 200ms
 
@@ -192,16 +192,62 @@ func TestEngine_DedupsByDownloadLink(t *testing.T) {
 	}
 }
 
-func TestEngine_KeepsUnkeyableDuplicates(t *testing.T) {
-	// Releases with neither InfoHash nor DownloadLink cannot be deduped and
-	// must both be kept.
-	rel := model.ReleaseInfo{Title: "NoKey"}
+func TestEngine_DropsLinklessReleases(t *testing.T) {
+	// Releases with no usable link (no DownloadLink, InfoHash or StreamURL)
+	// are noise (e.g. forum threads without attachments) and must be dropped.
+	rel := model.ReleaseInfo{Title: "NoLink"}
 	p1 := &fakeProvider{id: "p1", releases: []model.ReleaseInfo{rel}}
 	p2 := &fakeProvider{id: "p2", releases: []model.ReleaseInfo{rel}}
 	engine := NewEngine([]Provider{p1, p2})
 
 	result := engine.Search(context.Background(), Query{Keywords: "x"})
-	if len(result.Releases) != 2 {
-		t.Fatalf("expected both unkeyable releases kept, got %d", len(result.Releases))
+	if len(result.Releases) != 0 {
+		t.Fatalf("expected linkless releases dropped, got %d", len(result.Releases))
+	}
+}
+
+func TestEngine_KeepsMagnetOnlyRelease(t *testing.T) {
+	// A magnet-only release (InfoHash set, no DownloadLink) is downloadable
+	// and must be kept.
+	rel := model.ReleaseInfo{Title: "Magnet", InfoHash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+	engine := NewEngine([]Provider{&fakeProvider{id: "p", releases: []model.ReleaseInfo{rel}}})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 1 {
+		t.Fatalf("expected the magnet-only release kept, got %d", len(result.Releases))
+	}
+}
+
+func TestEngine_KeepsStreamOnlyRelease(t *testing.T) {
+	// A stream-only release (StreamURL set, no DownloadLink/InfoHash) is
+	// playable and must be kept.
+	rel := model.ReleaseInfo{Title: "Stream", StreamURL: "https://example.invalid/stream"}
+	engine := NewEngine([]Provider{&fakeProvider{id: "p", releases: []model.ReleaseInfo{rel}}})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 1 {
+		t.Fatalf("expected the stream-only release kept, got %d", len(result.Releases))
+	}
+}
+
+func TestEngine_FilterRunsBeforePerProviderCap(t *testing.T) {
+	// Linkless rows must be filtered before the per-provider cap: with 15
+	// junk rows followed by 5 magnet releases, the cap (10) must not keep a
+	// mix that includes junk.
+	releases := make([]model.ReleaseInfo, 0, 20)
+	for i := 0; i < 15; i++ {
+		releases = append(releases, model.ReleaseInfo{Title: fmt.Sprintf("Junk%d", i)})
+	}
+	for i := 0; i < 5; i++ {
+		releases = append(releases, model.ReleaseInfo{
+			Title:    fmt.Sprintf("Real%d", i),
+			InfoHash: fmt.Sprintf("%040d", i),
+		})
+	}
+	engine := NewEngine([]Provider{&fakeProvider{id: "p", releases: releases}})
+
+	result := engine.Search(context.Background(), Query{Keywords: "x"})
+	if len(result.Releases) != 5 {
+		t.Fatalf("expected 5 usable releases (junk filtered before the cap), got %d", len(result.Releases))
 	}
 }

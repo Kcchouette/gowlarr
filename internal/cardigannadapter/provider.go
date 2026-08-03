@@ -3,6 +3,7 @@ package cardigannadapter
 import (
 	"context"
 	"log/slog"
+	"net/url"
 	"strconv"
 
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
@@ -57,7 +58,15 @@ func (p *Provider) ResolveDownloadLink(ctx context.Context, rel model.ReleaseInf
 	if err != nil {
 		return rel, err
 	}
-	rel.DownloadLink = resolved.DownloadLink
+	// The engine returns the raw href extracted from the chain's response
+	// (e.g. "attachment.php?aid=1"), which gowlarr's download resolver would
+	// reject; absolutize against the definition base URL (== the provider
+	// base URL in production).
+	base := ""
+	if links := p.inner.Def().Links; len(links) > 0 {
+		base = links[0]
+	}
+	rel.DownloadLink = absolutizeLink(resolved.DownloadLink, base)
 	rel.InfoHash = resolved.InfoHash
 	rel.Unlocked = resolved.Unlocked
 	if resolved.Title != "" {
@@ -65,6 +74,26 @@ func (p *Provider) ResolveDownloadLink(ctx context.Context, rel model.ReleaseInf
 	}
 	rel.Hosts = append([]string(nil), resolved.Hosts...)
 	return rel, nil
+}
+
+// absolutizeLink resolves a relative link against base (RFC 3986); absolute
+// links (and empty or unparseable values) pass through unchanged.
+func absolutizeLink(link, base string) string {
+	if link == "" || base == "" {
+		return link
+	}
+	bu, err := url.Parse(base)
+	if err != nil {
+		return link
+	}
+	ref, err := url.Parse(link)
+	if err != nil {
+		return link
+	}
+	if ref.IsAbs() {
+		return link
+	}
+	return bu.ResolveReference(ref).String()
 }
 
 func ToReleaseInfos(releases []cardigannrelease.Release) []model.ReleaseInfo {

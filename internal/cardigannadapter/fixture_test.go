@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Kcchouette/cardigann-go/definition"
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
@@ -17,23 +17,6 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/model"
 	internalsearch "github.com/Kcchouette/gowlarr/internal/search"
 )
-
-// loadLocalDefinition reads one of the canonical definitions from
-// definitions-local/. The directory is gitignored (definitions live in a
-// separate repo), so the test skips when the files are absent.
-func loadLocalDefinition(t *testing.T, id string) definition.IndexerDefinition {
-	t.Helper()
-	path := filepath.Join("..", "..", "definitions-local", id+".yml")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Skipf("local definition %s not found (%v); clone the definitions repo into definitions-local/", path, err)
-	}
-	def, err := definition.Parse(raw)
-	if err != nil {
-		t.Fatalf("parsing local definition %s: %v", path, err)
-	}
-	return def
-}
 
 // ddlDefinitionYAML is a generic DDL indexer exercising the reply-unlock
 // chain pattern: content hidden behind a placeholder until a quick-reply
@@ -312,51 +295,228 @@ func TestDdlDefinition_ReplyUnlockSkipsWhenRevealed(t *testing.T) {
 	}
 }
 
-// thelostspaceSearchHTML mimics a MyBB search result page with two threads
-// carrying NZB attachments.
+// thelostspaceDefinitionYAML mirrors definitions-local/thelostspace.yml
+// (MyBB advanced thread search restricted to release forums + on-demand NZB
+// chain), inlined so the test runs in CI without the gitignored definitions
+// directory.
+const thelostspaceDefinitionYAML = `
+id: thelostspace-demo
+name: The Lost Space
+description: demo usenet forum (MyBB)
+language: fr-FR
+type: usenet
+encoding: UTF-8
+links:
+  - http://demo.invalid/
+caps:
+  modes:
+    search: [q]
+settings: []
+search:
+  paths:
+    - path: search.php?action=do_search
+  inputs:
+    keywords: "{{ .Keywords }}"
+    postthread: 1
+    showresults: threads
+    $raw: "&forums[]=4&forums[]=5&forums[]=8&forums[]=25&forums[]=70&forums[]=75"
+  rows:
+    selector: table.tborder tr
+  fields:
+    title:
+      selector: a[href*="showthread.php?tid="]
+    details:
+      selector: a[href*="showthread.php?tid="]
+      attribute: href
+    date:
+      selector: td:nth-child(7) span.smalltext
+      optional: true
+      filters:
+        - name: regexp
+          args: "([0-9]{2}\\.[0-9]{2}\\.[0-9]{4}, [0-9]{2}:[0-9]{2})"
+        - name: dateparse
+          args: "dd.MM.yyyy, HH:mm"
+    download:
+      selector: a[href*="showthread.php?tid="]
+      attribute: href
+download:
+  before:
+    - pathselector:
+        selector: a[href*="showthread.php?tid="]
+        attribute: href
+  selectors:
+    - selector: a[href*="attachment.php?aid="]
+      attribute: href
+      usebeforeresponse: true
+`
+
+// thelostspaceSearchHTML mimics a MyBB advanced thread-search result page:
+// title block in the 3rd td (a single showthread link), forum in the 4th,
+// last-post date in the 7th td (with trailing "Dernier message" text). The
+// third row is a chit-chat thread in the community forum (fid 11) without an
+// attachment; category filtering happens at query level, so it still parses.
 const thelostspaceSearchHTML = `<html><body>
 <table class="tborder">
-  <tr>
-    <td><a href="showthread.php?tid=10">Demo Thread One</a></td>
-    <td><a href="attachment.php?aid=100">demo-one.nzb</a></td>
+  <tr class="inline_row">
+    <td align="center" class="trow1" width="2%">&nbsp;</td>
+    <td align="center" class="trow1" width="2%">&nbsp;</td>
+    <td class="trow1"><div class="float_right"><img src="/images/paperclip.png" alt="" title="Ce sujet contient une pièce jointe." /></div><div><span><a href="showthread.php?tid=10&amp;highlight=tsundere" class="subject_editable">BLOOM S01 MULTi 1080p WEB x264 AAC -Tsundere-Raws (NF)</a></span></div></td>
+    <td class="trow1"><a href="forumdisplay.php?fid=48">1080p</a></td>
+    <td align="center" class="trow1">0</td>
+    <td align="center" class="trow1">3</td>
+    <td class="trow1" style="white-space: nowrap"><span class="smalltext"> 11.05.2026, 16:20<br /> <a href="showthread.php?tid=10&amp;action=lastpost">Dernier message</a>: <a href="member.php?action=profile&amp;uid=2">Kogami</a> </span></td>
+    <td class="trow1" align="center" style="white-space: nowrap"><input type="checkbox" class="checkbox" name="inlinemod_10" id="inlinemod_10" value="1" /></td>
   </tr>
-  <tr>
-    <td><a href="showthread.php?tid=11">Demo Thread Two</a></td>
-    <td><a href="attachment.php?aid=101">demo-two.nzb</a></td>
+  <tr class="inline_row">
+    <td align="center" class="trow2" width="2%">&nbsp;</td>
+    <td align="center" class="trow2" width="2%">&nbsp;</td>
+    <td class="trow2"><div class="float_right"><img src="/images/paperclip.png" alt="" title="Ce sujet contient une pièce jointe." /></div><div><span><a href="showthread.php?tid=11&amp;highlight=tsundere" class="subject_editable">Dragon Ball Super S01 MULTi 1080p WEB x264 AAC -Tsundere-Raws (ADN)</a></span></div></td>
+    <td class="trow2"><a href="forumdisplay.php?fid=48">1080p</a></td>
+    <td align="center" class="trow2">0</td>
+    <td align="center" class="trow2">1</td>
+    <td class="trow2" style="white-space: nowrap"><span class="smalltext"> 12.02.2026, 18:08<br /> <a href="showthread.php?tid=11&amp;action=lastpost">Dernier message</a>: <a href="member.php?action=profile&amp;uid=2">Kogami</a> </span></td>
+    <td class="trow2" align="center" style="white-space: nowrap"><input type="checkbox" class="checkbox" name="inlinemod_11" id="inlinemod_11" value="1" /></td>
+  </tr>
+  <tr class="inline_row">
+    <td align="center" class="trow1" width="2%">&nbsp;</td>
+    <td align="center" class="trow1" width="2%">&nbsp;</td>
+    <td class="trow1"><div><span><a href="showthread.php?tid=99&amp;highlight=tsundere" class="subject_editable">Voili voilou</a></span></div></td>
+    <td class="trow1"><a href="forumdisplay.php?fid=11">BLA-BLA</a></td>
+    <td align="center" class="trow1">12</td>
+    <td align="center" class="trow1">301</td>
+    <td class="trow1" style="white-space: nowrap"><span class="smalltext"> 09.01.2026, 21:03<br /> <a href="showthread.php?tid=99&amp;action=lastpost">Dernier message</a>: <a href="member.php?action=profile&amp;uid=9">Tartempion</a> </span></td>
+    <td class="trow1" align="center" style="white-space: nowrap"><input type="checkbox" class="checkbox" name="inlinemod_99" id="inlinemod_99" value="1" /></td>
   </tr>
 </table>
 </body></html>`
 
-func TestTheLostSpaceDefinition_NZBAttachment(t *testing.T) {
-	def := loadLocalDefinition(t, "thelostspace")
+// thelostspaceThreadHTML mimics a release thread page: the NZB attachment
+// link only exists here, never on the search page.
+const thelostspaceThreadHTML = `<html><body>
+<div class="postbody">
+  <div class="content"><a href="attachment.php?aid=100">BLOOM-S01.nzb</a></div>
+</div>
+</body></html>`
 
+// thelostspaceJunkThreadHTML mimics a chit-chat thread page: no attachment.
+const thelostspaceJunkThreadHTML = `<html><body>
+<div class="postbody">
+  <div class="content">Voili voilou, rien à télécharger ici.</div>
+</div>
+</body></html>`
+
+func TestTheLostSpaceDefinition_Search(t *testing.T) {
+	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+	if err != nil {
+		t.Fatalf("parsing fixture yaml: %v", err)
+	}
+
+	var searchQuery url.Values
 	var requests []string
 	mux := http.NewServeMux()
 	mux.HandleFunc("/search.php", func(w http.ResponseWriter, r *http.Request) {
-		requests = append(requests, r.Method+" "+r.URL.Path)
+		requests = append(requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
+		searchQuery = r.URL.Query()
 		fmt.Fprint(w, thelostspaceSearchHTML)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
 
-	provider := cardigannengine.NewProvider(def, server.URL, nil)
-	releases, err := provider.Search(context.Background(), cardigannengine.Query{Keywords: "demo"})
+	// gowlarr builds providers with SkipSearchDownload: the NZB chain must
+	// not run during search.
+	inner := cardigannengine.NewProvider(def, server.URL, nil)
+	inner.SkipSearchDownload()
+	provider := NewProvider(inner)
+
+	releases, err := provider.Search(context.Background(), internalsearch.Query{Keywords: "tsundere"})
 	if err != nil {
-		t.Fatalf("search: %v", err)
+		t.Fatalf("Search: %v", err)
+	}
+	if len(releases) != 3 {
+		t.Fatalf("expected 3 releases, got %d", len(releases))
 	}
 
-	if len(releases) != 2 {
-		t.Fatalf("expected 2 releases, got %d", len(releases))
+	rel := releases[0]
+	if rel.DownloadLink != "showthread.php?tid=10&highlight=tsundere" {
+		t.Errorf("DownloadLink = %q, want the raw thread URL", rel.DownloadLink)
 	}
-	for _, rel := range releases {
-		if rel.Protocol != cardigannrelease.ProtocolUsenet {
-			t.Errorf("Protocol = %q, want %q", rel.Protocol, cardigannrelease.ProtocolUsenet)
-		}
-		if !strings.Contains(rel.DownloadLink, "attachment.php?aid=") {
-			t.Errorf("DownloadLink = %q, want an attachment.php link", rel.DownloadLink)
-		}
+	want := time.Date(2026, 5, 11, 16, 20, 0, 0, time.UTC)
+	if !rel.PublishDate.Equal(want) {
+		t.Errorf("PublishDate = %v, want %v (parsed past the 'Dernier message' text)", rel.PublishDate, want)
 	}
-	if len(requests) != 1 || requests[0] != "GET /search.php" {
+	if rel.Protocol != model.ProtocolUsenet {
+		t.Errorf("Protocol = %q, want %q", rel.Protocol, model.ProtocolUsenet)
+	}
+	// The junk thread parses too: category filtering happens at query level.
+	if releases[2].Title != "Voili voilou" {
+		t.Errorf("releases[2].Title = %q, want %q", releases[2].Title, "Voili voilou")
+	}
+	if want := time.Date(2026, 1, 9, 21, 3, 0, 0, time.UTC); !releases[2].PublishDate.Equal(want) {
+		t.Errorf("junk PublishDate = %v, want %v", releases[2].PublishDate, want)
+	}
+
+	if got := searchQuery["forums[]"]; strings.Join(got, ",") != "4,5,8,25,70,75" {
+		t.Errorf("forums[] = %v, want [4 5 8 25 70 75]", got)
+	}
+	if got := searchQuery.Get("showresults"); got != "threads" {
+		t.Errorf("showresults = %q, want %q", got, "threads")
+	}
+	if len(requests) != 1 || !strings.HasPrefix(requests[0], "GET /search.php?") {
 		t.Errorf("expected a single GET /search.php, got %v", requests)
+	}
+}
+
+func TestTheLostSpaceDefinition_ResolveLinks(t *testing.T) {
+	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+	if err != nil {
+		t.Fatalf("parsing fixture yaml: %v", err)
+	}
+
+	var requests []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/showthread.php", func(w http.ResponseWriter, r *http.Request) {
+		requests = append(requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
+		if r.URL.Query().Get("tid") == "99" {
+			fmt.Fprint(w, thelostspaceJunkThreadHTML)
+			return
+		}
+		fmt.Fprint(w, thelostspaceThreadHTML)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// Absolutization resolves against Def().Links[0]; production passes
+	// def.Links[0] as the provider base URL, mirror that here.
+	def.Links[0] = server.URL
+	provider := NewProvider(cardigannengine.NewProvider(def, server.URL, nil))
+
+	rel := model.ReleaseInfo{
+		Title:        "BLOOM S01 MULTi 1080p WEB x264 AAC -Tsundere-Raws (NF)",
+		DownloadLink: "showthread.php?tid=10&highlight=tsundere",
+		Protocol:     model.ProtocolUsenet,
+		IndexerID:    "thelostspace.xyz",
+	}
+	resolved, err := provider.ResolveDownloadLink(context.Background(), rel)
+	if err != nil {
+		t.Fatalf("ResolveDownloadLink: %v", err)
+	}
+	if want := server.URL + "/attachment.php?aid=100"; resolved.DownloadLink != want {
+		t.Errorf("DownloadLink = %q, want %q (absolutized)", resolved.DownloadLink, want)
+	}
+
+	// A chit-chat thread has no attachment: the chain errors and the raw
+	// link is kept (the service layer logs and keeps it).
+	junk := model.ReleaseInfo{
+		Title:        "Voili voilou",
+		DownloadLink: "showthread.php?tid=99&highlight=tsundere",
+		Protocol:     model.ProtocolUsenet,
+		IndexerID:    "thelostspace.xyz",
+	}
+	resolvedJunk, err := provider.ResolveDownloadLink(context.Background(), junk)
+	if err == nil {
+		t.Error("expected an error resolving a thread without an attachment")
+	}
+	if resolvedJunk.DownloadLink != junk.DownloadLink {
+		t.Errorf("DownloadLink = %q, want the raw link kept %q", resolvedJunk.DownloadLink, junk.DownloadLink)
 	}
 }

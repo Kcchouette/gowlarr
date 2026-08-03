@@ -124,3 +124,21 @@ func TestToReleaseInfo_CategoriesCopied(t *testing.T) {
 		t.Error("modifying output categories should not affect input")
 	}
 }
+
+func TestAbsolutizeLink(t *testing.T) {
+	cases := []struct {
+		name, link, base, want string
+	}{
+		{"relative path", "attachment.php?aid=100", "https://thelostspace.xyz/", "https://thelostspace.xyz/attachment.php?aid=100"},
+		{"relative subpath", "forum/showthread.php?tid=10", "https://thelostspace.xyz/", "https://thelostspace.xyz/forum/showthread.php?tid=10"},
+		{"absolute https passes through", "https://other.invalid/dl/1.nzb", "https://thelostspace.xyz/", "https://other.invalid/dl/1.nzb"},
+		{"magnet passes through", "magnet:?xt=urn:btih:abc", "https://thelostspace.xyz/", "magnet:?xt=urn:btih:abc"},
+		{"empty link passes through", "", "https://thelostspace.xyz/", ""},
+		{"empty base passes through", "attachment.php?aid=1", "", "attachment.php?aid=1"},
+	}
+	for _, c := range cases {
+		if got := absolutizeLink(c.link, c.base); got != c.want {
+			t.Errorf("%s: absolutizeLink(%q, %q) = %q, want %q", c.name, c.link, c.base, got, c.want)
+		}
+	}
+}
