@@ -1,14 +1,59 @@
 ---
 feature: native-newznab-indexer
-status: in-progress
+status: delivered
 updated: 2026-08-10
 branch: feat/native-newznab
-commits: <base-sha>..<head-sha> # filled at delivery
+commits: d10030d..8e6c36b
 ---
 
 # Native Newznab Indexer
 
 ## Report
+
+**What was built** — Generic Newznab usenet indexers (base URL + API key)
+are now first-class persisted indexers: `gowlarr indexer add newznab` (with
+the reserved aliases `nzb` and `usenet`) drives the standard settings prompts
+through an in-memory synthetic definition (interactive or
+`--setting baseurl=... --setting apikey=...`), persists an
+`IndexerConfig` under the documented reserved `DefinitionID "newznab"` (no
+schema change — `indexer_configs.definition_id` has no FK), and is served by
+the native Newznab client in every path: parallel search (CLI + Torznab
+server), `indexer test`, and `download` (proxy/DNS preserved on the NZB
+fetch). The native client gained per-indexer/global proxy support
+(http/https/socks5) and DNS overrides via `NewWithTransport`, and parses the
+Newznab `<error>` XML so an invalid API key surfaces as an authentication
+failure. The Torznab server now emits `application/x-nzb` enclosures for
+usenet results and serves dynamic caps aggregated from the enabled indexers
+(native = all five modes; Cardigann defs contribute `caps.modes` with
+`audio-search → music-search` normalization).
+
+**Verification** — `make vet` PASS; `make lint` PASS (0 issues, after a
+`golangci-lint cache clean` that removed a stale per-module analysis cache);
+`go test -race -count=1 ./...` PASS (16 packages). `make build` is blocked
+by a PRE-EXISTING repo quirk independent of this feature: the `.gitignore`
+rule `gowlarr` (built binary) also matches the source directory
+`cmd/gowlarr/`, so the CLI main package is not tracked in git HEAD (verified
+on the pristine main checkout). E2E smoke via a temporary `cmd/` copy
+(removed after): `add newznab --setting` prints the settings summary and
+adds with instance ID = base-URL hostname; `add usenet` alias hits the
+duplicate-ID guard suggesting `--id`; an invalid base URL is rejected;
+`indexer test` against the real `api.nzbgeek.info` with a fake key returns
+`authentication failed: newznab indexer api.nzbgeek.info: Invalid API Key
+(code 101)` (validates the `<error>` parsing live); `search --indexer <id>`
+wires the provider (auth error surfaced as a provider warning).
+
+**Journey log** — The cardigann-go engine cannot speak the Newznab HTTP API
+(its `torznab` package only emits XML), so a native provider branch is
+unavoidable and the sentinel DefinitionID must short-circuit before every
+`GetDefinitionYAMLFallback`. Newznab reports a bad API key as HTTP 200 +
+`<error>` XML (not a 4xx) — without parsing it, `indexer test` misclassified
+auth failures as parsing errors. The `.gitignore` rule `gowlarr` also
+swallows `cmd/gowlarr/` (untracked CLI main package) — pre-existing, blocks
+`make build` in any fresh checkout. golangci-lint v2 can serve stale
+analysis from its module cache — a clean cache was required for a
+trustworthy 0-issue result. Independent reviews (two at plan time, one at
+implementation time) caught the error-string case-sensitivity bug, the
+missing `download` sentinel branch, and the socks5 DNS-composition comment.
 
 ## [S1] Problem
 
@@ -124,7 +169,7 @@ reviews):
       download test green (covers: S2; depends: T5)
 - [x] T9: README section for the persisted form — acceptance: `add newznab`
       documented next to the ad-hoc usage (covers: S2)
-- [ ] T10: verification + independent review + finalization — acceptance:
+- [x] T10: verification + independent review + finalization — acceptance:
       `make test`/`vet`/`lint`/`build` green, review findings addressed,
       spec `delivered` with `Report` and commits range (covers: S1-S3;
       depends: T2-T9)
