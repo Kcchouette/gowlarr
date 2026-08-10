@@ -8,8 +8,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Kcchouette/cardigann-go/definition"
+
 	"github.com/Kcchouette/gowlarr/internal/model"
 	"github.com/Kcchouette/gowlarr/internal/search"
+	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
@@ -85,16 +88,81 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 	}
 }
 
+// capsModes is the set of Torznab/Newznab search modes advertised in caps.
+var capsModes = []string{"search", "tv-search", "movie-search", "music-search", "book-search"}
+
+// capsAvailable aggregates the search modes supported by the enabled
+// indexers: a mode is available if at least one enabled indexer supports it.
+// Native Newznab indexers support all five modes; Cardigann defs contribute
+// their caps.modes (with the corpus's "audio-search" normalized to the caps
+// XML's "music-search"). A nil store (server tests) keeps the historical
+// all-yes behavior.
+func (s *Server) capsAvailable() map[string]bool {
+	avail := make(map[string]bool, len(capsModes))
+	if s.store == nil {
+		for _, m := range capsModes {
+			avail[m] = true
+		}
+		return avail
+	}
+	configs, err := s.store.ListIndexerConfigs(true, nil)
+	if err != nil {
+		slog.Warn("caps: listing indexer configs", "err", err)
+		return avail
+	}
+	for _, cfg := range configs {
+		if cfg.DefinitionID == store.NewznabDefinitionID {
+			// Native Newznab: all five modes (the persisted settings carry
+			// no per-indexer caps information).
+			for _, m := range capsModes {
+				avail[m] = true
+			}
+			continue
+		}
+		raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
+		if err != nil {
+			continue
+		}
+		def, err := definition.Parse([]byte(raw))
+		if err != nil {
+			continue
+		}
+		for mode := range def.Caps.Modes {
+			switch mode {
+			case "search":
+				avail["search"] = true
+			case "tv-search":
+				avail["tv-search"] = true
+			case "movie-search":
+				avail["movie-search"] = true
+			case "music-search", "audio-search": // corpus uses "audio-search" (e.g. hydra.yml)
+				avail["music-search"] = true
+			case "book-search":
+				avail["book-search"] = true
+			}
+		}
+	}
+	return avail
+}
+
 func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
+	avail := s.capsAvailable()
+	yesNo := func(m string) string {
+		if avail[m] {
+			return "yes"
+		}
+		return "no"
+	}
+
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)
-	fmt.Fprint(w, `<caps>
+	fmt.Fprintf(w, `<caps>
   <searching>
-    <search available="yes" />
-    <tv-search available="yes" />
-    <movie-search available="yes" />
-    <music-search available="yes" />
-    <book-search available="yes" />
+    <search available="%s" />
+    <tv-search available="%s" />
+    <movie-search available="%s" />
+    <music-search available="%s" />
+    <book-search available="%s" />
   </searching>
   <categories>
     <category id="2000" name="Movies" />
@@ -105,7 +173,7 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
     <category id="7000" name="Console" />
     <category id="8000" name="XXX" />
   </categories>
-</caps>`)
+</caps>`, yesNo("search"), yesNo("tv-search"), yesNo("movie-search"), yesNo("music-search"), yesNo("book-search"))
 }
 
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
@@ -117,6 +185,15 @@ func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
     <description>OK</description>
   </channel>
 </rss>`)
+}
+
+// enclosureType returns the MIME type of the download enclosure for a
+// release, per protocol: NZB for usenet, .torrent otherwise.
+func enclosureType(p model.Protocol) string {
+	if p == model.ProtocolUsenet {
+		return "application/x-nzb"
+	}
+	return "application/x-bittorrent"
 }
 
 // WriteTorznabResponse writes a Torznab-compatible RSS XML response.
@@ -183,7 +260,7 @@ func WriteTorznabResponse(w http.ResponseWriter, releases []model.ReleaseInfo, i
 			Enclosure: enclosure{
 				URL:    r.DownloadLink,
 				Length: strconv.FormatInt(r.Size, 10),
-				Type:   "application/x-bittorrent",
+				Type:   enclosureType(r.Protocol),
 			},
 			Attrs: []torznabAttr{
 				{Name: "size", Value: strconv.FormatInt(r.Size, 10)},

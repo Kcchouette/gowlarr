@@ -4,11 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
 	"github.com/Kcchouette/gowlarr/internal/search"
+	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 // fakeProvider implements search.Provider for tests.
@@ -215,6 +217,154 @@ func TestWriteTorznabResponseEmpty(t *testing.T) {
 	err := WriteTorznabResponse(w, []model.ReleaseInfo{}, "test-indexer")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestWriteTorznabResponse_EnclosureByProtocol(t *testing.T) {
+	releases := []model.ReleaseInfo{
+		{Title: "Usenet Release", DownloadLink: "http://example.com/rel.nzb", Size: 100, Protocol: model.ProtocolUsenet},
+		{Title: "Torrent Release", DownloadLink: "http://example.com/rel.torrent", Size: 200, Protocol: model.ProtocolTorrent},
+	}
+
+	w := httptest.NewRecorder()
+	if err := WriteTorznabResponse(w, releases, "test-indexer"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, `type="application/x-nzb"`) {
+		t.Error("usenet release should get an application/x-nzb enclosure")
+	}
+	if !strings.Contains(body, `type="application/x-bittorrent"`) {
+		t.Error("torrent release should get an application/x-bittorrent enclosure")
+	}
+}
+
+func openTestStore(t *testing.T) *store.Store {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "server-test.db"))
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	return st
+}
+
+func TestHandleCaps_NilStore_Fallback(t *testing.T) {
+	engine := search.NewEngine(nil)
+	srv := New(":0", "test-key", "", engine, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api?t=caps&apikey=test-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleCaps(w, req)
+
+	body := w.Body.String()
+	for _, mode := range capsModes {
+		want := `<` + mode + ` available="yes" />`
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %s with nil store, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestHandleCaps_Dynamic_NativeNewznab(t *testing.T) {
+	st := openTestStore(t)
+	native := store.IndexerConfig{
+		ID:           "nzbgeek",
+		DefinitionID: store.NewznabDefinitionID,
+		Protocol:     "usenet",
+		Enabled:      true,
+		Settings:     map[string]string{"baseurl": "https://api.example.invalid/", "apikey": "k"},
+	}
+	if err := st.SaveIndexerConfig(native, nil); err != nil {
+		t.Fatalf("SaveIndexerConfig: %v", err)
+	}
+
+	engine := search.NewEngine(nil)
+	srv := New(":0", "test-key", "", engine, st)
+	req := httptest.NewRequest(http.MethodGet, "/api?t=caps&apikey=test-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleCaps(w, req)
+
+	body := w.Body.String()
+	for _, mode := range capsModes {
+		want := `<` + mode + ` available="yes" />`
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %s for a native newznab config, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestHandleCaps_Dynamic_Cardigann(t *testing.T) {
+	st := openTestStore(t)
+	// A Cardigann def with search, tv-search and audio-search modes: the
+	// corpus's "audio-search" must be normalized to music-search.
+	const fixtureYAML = `id: fixture
+name: Fixture
+type: public
+links:
+  - https://fixture.example/
+caps:
+  modes:
+    search: [q]
+    tv-search: [q, season, ep, imdbid, tmdbid]
+    audio-search: [q]
+search:
+  paths:
+    - path: search
+      response:
+        type: html
+`
+	if err := st.SaveDefinition("fixture", "local", "", fixtureYAML); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	fixture := store.IndexerConfig{
+		ID:           "fixture",
+		DefinitionID: "fixture",
+		Protocol:     "torrent",
+		Enabled:      true,
+		Settings:     map[string]string{},
+	}
+	if err := st.SaveIndexerConfig(fixture, nil); err != nil {
+		t.Fatalf("SaveIndexerConfig: %v", err)
+	}
+
+	engine := search.NewEngine(nil)
+	srv := New(":0", "test-key", "", engine, st)
+	req := httptest.NewRequest(http.MethodGet, "/api?t=caps&apikey=test-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleCaps(w, req)
+
+	body := w.Body.String()
+	cases := map[string]string{
+		"search":       "yes",
+		"tv-search":    "yes",
+		"music-search": "yes", // normalized from audio-search
+		"movie-search": "no",
+		"book-search":  "no",
+	}
+	for mode, want := range cases {
+		wantFragment := `<` + mode + ` available="` + want + `" />`
+		if !strings.Contains(body, wantFragment) {
+			t.Errorf("expected %s, got:\n%s", wantFragment, body)
+		}
+	}
+}
+
+func TestHandleCaps_Dynamic_NoIndexers(t *testing.T) {
+	st := openTestStore(t) // no enabled indexers
+	engine := search.NewEngine(nil)
+	srv := New(":0", "test-key", "", engine, st)
+
+	req := httptest.NewRequest(http.MethodGet, "/api?t=caps&apikey=test-key", nil)
+	w := httptest.NewRecorder()
+	srv.handleCaps(w, req)
+
+	body := w.Body.String()
+	for _, mode := range capsModes {
+		want := `<` + mode + ` available="no" />`
+		if !strings.Contains(body, want) {
+			t.Errorf("expected %s without indexers, got:\n%s", want, body)
+		}
 	}
 }
 

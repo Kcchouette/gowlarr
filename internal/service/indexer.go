@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"sort"
@@ -76,6 +77,35 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 	return nil
 }
 
+// AddNewznab persists a native Newznab indexer (base URL + API key), the
+// entry point behind `gowlarr indexer add newznab|nzb|usenet`. The config
+// uses the reserved DefinitionID store.NewznabDefinitionID and is served by
+// the native newznab client.
+func (s *IndexerService) AddNewznab(instanceID, baseURL, apiKey, proxyURL string) error {
+	u, err := url.Parse(baseURL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return fmt.Errorf("invalid newznab base URL %q: expected http(s)://host[/path]", baseURL)
+	}
+
+	// SaveIndexerConfig upserts silently on id: reject a duplicate instance
+	// ID instead of silently overwriting an existing indexer.
+	if _, err := s.store.GetIndexerConfig(instanceID, nil); err == nil {
+		return fmt.Errorf("indexer %q already exists: pass --id to choose another instance ID", instanceID)
+	} else if !errors.Is(err, store.ErrIndexerConfigNotFound) {
+		return err
+	}
+
+	cfg := store.IndexerConfig{
+		ID:           instanceID,
+		DefinitionID: store.NewznabDefinitionID,
+		Protocol:     "usenet",
+		Enabled:      true,
+		Settings:     map[string]string{"baseurl": baseURL, "apikey": apiKey},
+		ProxyURL:     proxyURL,
+	}
+	return s.store.SaveIndexerConfig(cfg, nil)
+}
+
 // List returns the list of configured indexers.
 func (s *IndexerService) List(onlyEnabled bool) ([]store.IndexerConfig, error) {
 	return s.store.ListIndexerConfigs(onlyEnabled, nil)
@@ -96,6 +126,27 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 	cfg, err := s.store.GetIndexerConfig(id, nil)
 	if err != nil {
 		return err
+	}
+
+	// Native Newznab indexers have no cached definition: the provider comes
+	// straight from the persisted settings, without any definition lookup.
+	if cfg.DefinitionID == store.NewznabDefinitionID {
+		provider, err := newznabProviderFromConfig(cfg, s.cfg)
+		if err != nil {
+			return err
+		}
+		_, err = provider.Search(ctx, search.Query{Keywords: "test"})
+		if err != nil {
+			// The client emits "returned HTTP 401" (uppercase) and, after the
+			// <error> parsing, "Invalid API Key (code 100)": match on the
+			// lowercased message.
+			lower := strings.ToLower(err.Error())
+			if strings.Contains(lower, "http 401") || strings.Contains(lower, "http 403") || strings.Contains(lower, "invalid api") {
+				return fmt.Errorf("authentication failed: %w", err)
+			}
+			return fmt.Errorf("network/parsing error: %w", err)
+		}
+		return nil
 	}
 
 	var raw string

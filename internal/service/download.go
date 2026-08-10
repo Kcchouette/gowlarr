@@ -14,6 +14,7 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/config"
 	"github.com/Kcchouette/gowlarr/internal/download"
 	"github.com/Kcchouette/gowlarr/internal/model"
+	"github.com/Kcchouette/gowlarr/internal/newznab"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
@@ -65,6 +66,21 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 	if err != nil {
 		slog.Warn("download: loading indexer config, falling back to default client", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
+	}
+
+	// Native Newznab configs have no cached definition: reuse the native
+	// client so the configured proxy/DNS overrides apply to the NZB fetch.
+	// Newznab enclosure URLs embed the API key, so no auth headers are
+	// needed (the resolver attaches them only to the trusted host anyway).
+	if cfg.DefinitionID == store.NewznabDefinitionID {
+		client, err := newznab.NewWithTransport(cfg.ID, cfg.ID,
+			cfg.Settings["baseurl"], cfg.Settings["apikey"],
+			effectiveProxyURL(cfg.ProxyURL, s.cfg), s.cfg.DNSOverrides)
+		if err != nil {
+			slog.Warn("download: building native newznab client, falling back to default client", "indexer_id", indexerID, "err", err)
+			return defaultClient, nil
+		}
+		return client.HTTPClient, nil
 	}
 
 	raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)

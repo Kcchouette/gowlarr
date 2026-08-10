@@ -9,6 +9,13 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
+// NewznabDefinitionID is the reserved DefinitionID of native Newznab
+// indexers (settings: baseurl + apikey). It is NOT a cached Cardigann
+// definition: configs with this ID are served by the native newznab client,
+// so every code path that would load a definition for this ID must branch
+// on it BEFORE the definition lookup.
+const NewznabDefinitionID = "newznab"
+
 // IndexerConfig represents a configured indexer instance (association of a
 // cached Cardigann definition with user credentials/options), persisted to
 // survive between CLI invocations.

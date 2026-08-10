@@ -14,6 +14,7 @@ import (
 	"github.com/Kcchouette/gowlarr/internal/config"
 	"github.com/Kcchouette/gowlarr/internal/flaresolverr"
 	"github.com/Kcchouette/gowlarr/internal/netutil"
+	"github.com/Kcchouette/gowlarr/internal/newznab"
 	"github.com/Kcchouette/gowlarr/internal/search"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
@@ -43,6 +44,20 @@ func applyDNSOverrides(client *httpclient.IndexerClient, overrides map[string]st
 	client.HTTPClient().Transport = cloned
 }
 
+// newznabProviderFromConfig builds a native Newznab provider from a
+// persisted native config (DefinitionID == store.NewznabDefinitionID).
+func newznabProviderFromConfig(cfg store.IndexerConfig, appCfg config.Config) (search.Provider, error) {
+	baseURL := cfg.Settings["baseurl"]
+	if baseURL == "" {
+		return nil, fmt.Errorf("newznab indexer %s: missing baseurl setting", cfg.ID)
+	}
+	apiKey := cfg.Settings["apikey"]
+	if apiKey == "" {
+		return nil, fmt.Errorf("newznab indexer %s: missing apikey setting", cfg.ID)
+	}
+	return newznab.NewWithTransport(cfg.ID, cfg.ID, baseURL, apiKey, effectiveProxyURL(cfg.ProxyURL, appCfg), appCfg.DNSOverrides)
+}
+
 // BuildConfiguredProviders builds a Cardigann search.Provider for each
 // enabled indexer, with authenticated session if the definition requires it.
 // If cfg.FlareSolverrURL is set, the FlareSolverr transport is used to
@@ -61,6 +76,18 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 
 	providers := make([]search.Provider, 0, len(configs))
 	for _, idxCfg := range configs {
+		// Native Newznab configs have no cached definition: build the native
+		// client before any definition lookup.
+		if idxCfg.DefinitionID == store.NewznabDefinitionID {
+			p, err := newznabProviderFromConfig(idxCfg, cfg)
+			if err != nil {
+				slog.Warn("indexer: building native newznab provider", "id", idxCfg.ID, "err", err)
+				continue
+			}
+			providers = append(providers, p)
+			continue
+		}
+
 		raw, _, err := st.GetDefinitionYAMLFallback(idxCfg.DefinitionID)
 		if err != nil {
 			slog.Warn("indexer: definition not found", "id", idxCfg.ID, "err", err)
@@ -115,6 +142,11 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 
 // BuildIndexerProvider builds a Cardigann provider for a specific indexer (testing).
 func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
+	// Native Newznab configs have no cached definition: build the native
+	// client before any definition lookup.
+	if cfg.DefinitionID == store.NewznabDefinitionID {
+		return newznabProviderFromConfig(cfg, appCfg)
+	}
 	raw, _, err := st.GetDefinitionYAMLFallback(cfg.DefinitionID)
 	if err != nil {
 		return nil, fmt.Errorf("loading definition: %w", err)
@@ -123,6 +155,11 @@ func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.Index
 }
 
 func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, raw string) (search.Provider, error) {
+	// Defensive: any caller of this raw variant is also protected against a
+	// native config (raw is ignored for the sentinel).
+	if cfg.DefinitionID == store.NewznabDefinitionID {
+		return newznabProviderFromConfig(cfg, appCfg)
+	}
 	def, err := parseDefinition(raw)
 	if err != nil {
 		return nil, fmt.Errorf("parsing definition: %w", err)

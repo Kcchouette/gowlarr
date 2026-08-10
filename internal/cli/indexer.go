@@ -2,13 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
+	"net/url"
 	"strings"
 
 	"github.com/Kcchouette/cardigann-go/definition"
 	"github.com/spf13/cobra"
 
 	"github.com/Kcchouette/gowlarr/internal/service"
+	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 func newIndexerCmd() *cobra.Command {
@@ -37,7 +40,9 @@ func newIndexerAddCmd() *cobra.Command {
 		Short: "Add an indexer instance (by definition ID, domain, or name)",
 		Long: `Add an indexer instance from a cached definition.
 The query can be a definition ID (e.g. "1337x"), a domain (e.g. "abn.lol"),
-or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
+or a partial name (e.g. "abnormal"). The system resolves it automatically.
+The reserved aliases "newznab", "nzb" and "usenet" add a native Newznab
+indexer (base URL + API key) instead.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
@@ -52,6 +57,25 @@ or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
 			}
 
 			svc := service.NewIndexerService(st, cfg)
+			errw := cmd.ErrOrStderr() // prompts and summary are diagnostics: keep stdout clean
+
+			// Reserved aliases add a native Newznab indexer, resolved before
+			// any definition lookup (there is no cached definition for it).
+			if isNewznabAlias(args[0]) {
+				def := newznabSyntheticDefinition()
+				if settingsMap, err = promptMissingSettings(def, settingsMap, errw); err != nil {
+					return err
+				}
+				instanceID := id
+				if instanceID == "" {
+					instanceID = newznabDefaultID(settingsMap["baseurl"])
+				}
+				if err := svc.AddNewznab(instanceID, settingsMap["baseurl"], settingsMap["apikey"], proxyURL); err != nil {
+					return err
+				}
+				fmt.Printf("Indexer %q added (native Newznab).\n", instanceID)
+				return nil
+			}
 
 			// Resolve the query to a definition ID.
 			resolved, err := svc.ResolveDefinition(args[0], version)
@@ -103,27 +127,13 @@ or a partial name (e.g. "abnormal"). The system resolves it automatically.`,
 			}
 
 			missing := requiredSettings(def, settingsMap)
-			errw := cmd.ErrOrStderr() // prompts and summary are diagnostics: keep stdout clean
-			if len(missing) > 0 && !stdinIsTerminal() {
-				names := make([]string, 0, len(missing))
-				for _, s := range missing {
-					names = append(names, s.Name)
-				}
-				// The definition's info texts are the help the user needs
-				// (e.g. where to find the API key) — show them in the error.
-				for _, s := range def.Settings {
-					if s.Type == "info" && s.Default != "" {
-						fmt.Fprintln(errw, s.Default)
-					}
-				}
-				return fmt.Errorf("definition %q requires settings: %s (provide them with --setting key=value)", defID, strings.Join(names, ", "))
-			}
 			if len(missing) > 0 {
-				if settingsMap, err = runPrompts(def, settingsMap, newStdinPrompter(errw), errw); err != nil {
+				if settingsMap, err = promptMissingSettings(def, settingsMap, errw); err != nil {
 					return err
 				}
+			} else {
+				printSettingsSummary(def, settingsMap, errw)
 			}
-			printSettingsSummary(def, settingsMap, errw)
 
 			if err := svc.Add(defID, instanceID, best.Version, proxyURL, settingsMap); err != nil {
 				return err
@@ -150,6 +160,72 @@ func parseSettingFlags(settings []string) (map[string]string, error) {
 		out[parts[0]] = parts[1]
 	}
 	return out, nil
+}
+
+// promptMissingSettings asks interactively (or errors in non-tty mode) for
+// the definition's required settings not yet provided, then prints the
+// settings summary. Returns the final settings map.
+func promptMissingSettings(def definition.IndexerDefinition, settingsMap map[string]string, errw io.Writer) (map[string]string, error) {
+	missing := requiredSettings(def, settingsMap)
+	if len(missing) > 0 && !stdinIsTerminal() {
+		names := make([]string, 0, len(missing))
+		for _, s := range missing {
+			names = append(names, s.Name)
+		}
+		// The definition's info texts are the help the user needs
+		// (e.g. where to find the API key) — show them in the error.
+		for _, s := range def.Settings {
+			if s.Type == "info" && s.Default != "" {
+				fmt.Fprintln(errw, s.Default)
+			}
+		}
+		return nil, fmt.Errorf("definition %q requires settings: %s (provide them with --setting key=value)", def.ID, strings.Join(names, ", "))
+	}
+	if len(missing) > 0 {
+		var err error
+		if settingsMap, err = runPrompts(def, settingsMap, newStdinPrompter(errw), errw); err != nil {
+			return nil, err
+		}
+	}
+	printSettingsSummary(def, settingsMap, errw)
+	return settingsMap, nil
+}
+
+// newznabSyntheticDefinition is the in-memory definition backing native
+// Newznab adds: it drives the standard settings prompts (baseurl + apikey)
+// without any cached Cardigann definition.
+func newznabSyntheticDefinition() definition.IndexerDefinition {
+	return definition.IndexerDefinition{
+		ID:   store.NewznabDefinitionID,
+		Name: "Newznab (generic usenet)",
+		Type: "usenet",
+		Settings: []definition.Setting{
+			{Name: "baseurl", Type: "text", Label: "Base URL"},
+			{Name: "apikey", Type: "password", Label: "API Key"},
+			{Name: "info", Type: "info", Default: "Base URL: the indexer's API endpoint root, e.g. https://api.nzbgeek.info/. API key: your indexer profile/API settings page."},
+		},
+	}
+}
+
+// isNewznabAlias reports whether the query is a reserved alias for the
+// native Newznab indexer (exact, case-insensitive match). Intentionally
+// narrow: any real definition (e.g. "usenet-crawler") is resolved normally.
+func isNewznabAlias(query string) bool {
+	switch strings.ToLower(strings.TrimSpace(query)) {
+	case "newznab", "nzb", "usenet":
+		return true
+	}
+	return false
+}
+
+// newznabDefaultID returns the default instance ID for a Newznab base URL
+// (its hostname), falling back to "newznab" when unparseable.
+func newznabDefaultID(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Hostname() == "" {
+		return store.NewznabDefinitionID
+	}
+	return u.Hostname()
 }
 
 func newIndexerListCmd() *cobra.Command {

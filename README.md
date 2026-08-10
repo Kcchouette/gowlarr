@@ -83,6 +83,21 @@ gowlarr download <result-id> --stdout       # Print to stdout
 
 ### Usenet (Newznab)
 
+Generic Newznab indexers (base URL + API key) can be added as persistent
+indexers, exactly like Cardigann ones:
+
+```bash
+gowlarr indexer add newznab                    # interactive: base URL + API key
+gowlarr indexer add usenet --setting baseurl=https://api.indexer.example --setting apikey=YOUR_KEY --id indexer
+gowlarr indexer test indexer                   # test connectivity/authentication
+```
+
+The reserved aliases `newznab`, `nzb` and `usenet` add a native Newznab
+indexer (persisted in SQLite, served by the native Newznab client, part of
+every search and of the Torznab/Newznab server). The instance ID defaults to
+the base URL's hostname (`--id` overrides it). For a one-off search without
+persisting anything:
+
 ```bash
 gowlarr search "query" --newznab-url https://indexer.example.com --newznab-apikey YOUR_KEY
 ```

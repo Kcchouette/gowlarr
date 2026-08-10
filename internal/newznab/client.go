@@ -9,14 +9,20 @@
 package newznab
 
 import (
+	"bufio"
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/proxy"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
 	"github.com/Kcchouette/gowlarr/internal/netutil"
@@ -45,22 +51,32 @@ var sharedTransport = &http.Transport{
 
 // New builds a generic Newznab client.
 func New(id, name, baseURL, apiKey string) *Client {
-	return NewWithOverrides(id, name, baseURL, apiKey, nil)
+	return newClient(id, name, baseURL, apiKey, transportWithOverrides(nil))
 }
 
 // NewWithOverrides builds a generic Newznab client, optionally forcing DNS
 // resolution of specific hostnames to fixed IPs (equivalent to curl's
 // --resolve). A nil or empty overrides map behaves exactly like New.
 func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]string) *Client {
-	transport := sharedTransport
+	return newClient(id, name, baseURL, apiKey, transportWithOverrides(overrides))
+}
+
+// transportWithOverrides clones the shared transport, optionally forcing DNS
+// resolution of specific hostnames to fixed IPs. The shared transport is
+// never mutated: each client gets its own clone.
+func transportWithOverrides(overrides map[string]string) *http.Transport {
+	transport := sharedTransport.Clone()
 	if len(overrides) > 0 {
-		cloned := sharedTransport.Clone()
-		cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
+		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
 		// A custom DialContext disables HTTP/2 by default; re-enable it so
 		// Cloudflare-fronted hosts still negotiate properly.
-		cloned.ForceAttemptHTTP2 = true
-		transport = cloned
+		transport.ForceAttemptHTTP2 = true
 	}
+	return transport
+}
+
+// newClient builds the client around a pre-built transport.
+func newClient(id, name, baseURL, apiKey string, transport *http.Transport) *Client {
 	return &Client{
 		BaseURL:     strings.TrimRight(baseURL, "/"),
 		APIKey:      apiKey,
@@ -68,6 +84,52 @@ func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]str
 		IndexerName: name,
 		HTTPClient:  &http.Client{Timeout: 20 * time.Second, Transport: transport}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
 	}
+}
+
+// NewWithTransport builds a generic Newznab client honoring an optional
+// per-indexer proxy (http://, https://, socks5://) and DNS overrides. The
+// proxy scheme is validated; an unsupported scheme returns an error.
+func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[string]string) (*Client, error) {
+	transport := sharedTransport.Clone()
+
+	if proxyURL != "" {
+		u, err := url.Parse(proxyURL)
+		if err != nil {
+			return nil, fmt.Errorf("parsing proxy URL: %w", err)
+		}
+		switch u.Scheme {
+		case "http", "https":
+			transport.Proxy = http.ProxyURL(u)
+		case "socks5":
+			transport.Proxy = nil // the socks5 dialer IS the proxy path; an env proxy must not also apply
+			dialer, err := proxy.FromURL(u, proxy.Direct)
+			if err != nil {
+				return nil, fmt.Errorf("building socks5 dialer: %w", err)
+			}
+			// Prefer the context-aware dialer so request deadlines propagate
+			// to the SOCKS5 handshake; fall back to the plain Dial.
+			if cd, ok := dialer.(proxy.ContextDialer); ok {
+				transport.DialContext = cd.DialContext
+			} else {
+				transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return dialer.Dial(network, addr)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("unsupported proxy scheme %q (only http/https/socks5)", u.Scheme)
+		}
+	}
+
+	// Overrides are applied last so they compose on top of the socks5
+	// dialer: an overridden hostname bypasses the proxy.
+	if len(overrides) > 0 {
+		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
+		// A custom DialContext disables HTTP/2 by default; re-enable it so
+		// Cloudflare-fronted hosts still negotiate properly.
+		transport.ForceAttemptHTTP2 = true
+	}
+
+	return newClient(id, name, baseURL, apiKey, transport), nil
 }
 
 func (c *Client) ID() string               { return c.IndexerID }
@@ -102,6 +164,13 @@ type rssItem struct {
 type rssAttr struct {
 	Name  string `xml:"name,attr"`
 	Value string `xml:"value,attr"`
+}
+
+// errorXML models the <error code="..." description="..."/> response the
+// Newznab API returns for failed requests (e.g. an invalid API key).
+type errorXML struct {
+	Code        string `xml:"code,attr"`
+	Description string `xml:"description,attr"`
 }
 
 func (it rssItem) attr(name string) string {
@@ -166,8 +235,29 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 		return nil, fmt.Errorf("newznab indexer %s returned HTTP %d", c.IndexerID, resp.StatusCode)
 	}
 
+	// A bad API key is reported as HTTP 200 + <error code="100"
+	// description="Invalid API Key"/> (not a 4xx): sniff the root element
+	// with a non-consuming peek so the error is surfaced as an
+	// authentication failure instead of a misleading RSS parse error.
+	br := bufio.NewReader(resp.Body)
+	head, err := br.Peek(1024)
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, fmt.Errorf("reading newznab response from %s: %w", c.IndexerID, err)
+	}
+	headLower := strings.ToLower(string(head))
+	if !strings.Contains(headLower, "<rss") && strings.Contains(headLower, "<error") {
+		var e errorXML
+		if err := xml.NewDecoder(br).Decode(&e); err == nil {
+			desc := e.Description
+			if desc == "" {
+				desc = "unknown error"
+			}
+			return nil, fmt.Errorf("newznab indexer %s: %s (code %s)", c.IndexerID, desc, e.Code)
+		}
+	}
+
 	var feed rssFeed
-	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+	if err := xml.NewDecoder(br).Decode(&feed); err != nil {
 		return nil, fmt.Errorf("parsing newznab RSS response from %s: %w", c.IndexerID, err)
 	}
 

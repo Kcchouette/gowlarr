@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
@@ -107,5 +108,119 @@ func TestClient_Search_CategoriesInRequest(t *testing.T) {
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x", Categories: []int{2000, 2010}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
+	}
+}
+
+func TestClient_Search_ErrorXML(t *testing.T) {
+	// A bad API key is reported as HTTP 200 + <error> XML, not a 4xx: the
+	// error must surface as such, not as a misleading RSS parse failure.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(`<?xml version="1.0" encoding="UTF-8"?>
+<error code="100" description="Invalid API Key"/>`))
+	}))
+	defer server.Close()
+
+	client := New("test-usenet", "TestUsenet", server.URL, "badkey")
+	_, err := client.Search(context.Background(), search.Query{Keywords: "x"})
+	if err == nil {
+		t.Fatal("expected error for <error> response")
+	}
+	if !strings.Contains(err.Error(), "Invalid API Key") {
+		t.Errorf("expected description in error, got %q", err.Error())
+	}
+	if !strings.Contains(err.Error(), "code 100") {
+		t.Errorf("expected code in error, got %q", err.Error())
+	}
+}
+
+func TestNewWithTransport_HTTPProxy(t *testing.T) {
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080", nil)
+	if err != nil {
+		t.Fatalf("NewWithTransport: %v", err)
+	}
+	tr, ok := c.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
+	}
+	if tr.Proxy == nil {
+		t.Fatal("expected Proxy to be set for an http proxy")
+	}
+	req, _ := http.NewRequest(http.MethodGet, "http://example.invalid/api", nil)
+	u, err := tr.Proxy(req)
+	if err != nil {
+		t.Fatalf("Proxy: %v", err)
+	}
+	if u.String() != "http://proxy.example:8080" {
+		t.Errorf("expected proxy http://proxy.example:8080, got %q", u.String())
+	}
+}
+
+func TestNewWithTransport_SOCKS5(t *testing.T) {
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "socks5://proxy.example:1080", nil)
+	if err != nil {
+		t.Fatalf("NewWithTransport: %v", err)
+	}
+	tr, ok := c.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
+	}
+	if tr.Proxy != nil {
+		t.Error("expected nil Proxy for socks5 (the dialer IS the proxy path)")
+	}
+	if tr.DialContext == nil {
+		t.Error("expected a DialContext for socks5")
+	}
+}
+
+func TestNewWithTransport_UnsupportedScheme(t *testing.T) {
+	_, err := NewWithTransport("id", "name", "http://example.invalid", "key", "ftp://proxy.example", nil)
+	if err == nil {
+		t.Fatal("expected error for unsupported proxy scheme")
+	}
+	if !strings.Contains(err.Error(), "unsupported proxy scheme") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestNewWithTransport_DNSOverrides(t *testing.T) {
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "", map[string]string{"example.invalid": "127.0.0.1"})
+	if err != nil {
+		t.Fatalf("NewWithTransport: %v", err)
+	}
+	tr, ok := c.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
+	}
+	if tr.DialContext == nil {
+		t.Error("expected DialContext with DNS overrides")
+	}
+	if !tr.ForceAttemptHTTP2 {
+		t.Error("expected ForceAttemptHTTP2 when a custom DialContext is set")
+	}
+
+	// The shared transport must not be mutated: a client without overrides
+	// keeps a nil DialContext.
+	plain, _ := NewWithTransport("id2", "name", "http://example.invalid", "key", "", nil)
+	plainTR, ok := plain.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", plain.HTTPClient.Transport)
+	}
+	if plainTR.DialContext != nil {
+		t.Error("shared transport was mutated: plain client has a DialContext")
+	}
+}
+
+func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
+	c := New("id", "name", "http://example.invalid", "key")
+	tr, ok := c.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
+	}
+	if tr.Proxy == nil {
+		t.Error("expected non-nil Proxy (env-var proxy preserved) without an explicit proxy")
+	}
+	if tr.DialContext != nil {
+		t.Error("expected nil DialContext without DNS overrides")
 	}
 }
