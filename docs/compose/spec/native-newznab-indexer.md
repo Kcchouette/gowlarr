@@ -1,9 +1,9 @@
 ---
 feature: native-newznab-indexer
-status: in-progress
+status: delivered
 updated: 2026-08-10
-branch: feat/native-newznab
-commits: d10030d..e128d80
+branch: feat/newznab-api-path
+commits: 1b98bc6..a4c70b9
 ---
 
 # Native Newznab Indexer
@@ -27,6 +27,13 @@ usenet results and serves dynamic caps aggregated from the enabled indexers
 (native = all five modes; Cardigann defs contribute `caps.modes` with
 `audio-search → music-search` normalization).
 
+**Amendment (custom API path)** — the client computes its API endpoint once
+(`Client.apiURL` via `apiEndpoint`): a bare origin gets `/api` appended
+(standard Newznab, e.g. SpotWeb), a base URL carrying a custom path is used
+verbatim (e.g. Hydra's `api/v1/newznab`) — backward compatible, applied to
+both `Search` and `Caps`. This makes `definitions-local/hydra.yml` locally
+replaceable by a native config and fixes a latent double-`/api` in `Caps`.
+
 **Verification** — `make vet` PASS; `make lint` PASS (0 issues, after a
 `golangci-lint cache clean` that removed a stale per-module analysis cache);
 `go test -race -count=1 ./...` PASS (16 packages); `make build` PASS (the
@@ -40,19 +47,33 @@ duplicate-ID guard suggesting `--id`; an invalid base URL is rejected;
 `authentication failed: newznab indexer api.nzbgeek.info: Invalid API Key
 (code 101)` (validates the `<error>` parsing live); `search --indexer <id>`
 wires the provider (auth error surfaced as a provider warning).
+Amendment smoke (live): `add newznab --setting
+baseurl=https://hydracker.com/api/v1/newznab --setting apikey=fake --id
+hydra-native` + `indexer test hydra-native` → `authentication failed:
+newznab indexer hydra-native returned HTTP 401` (custom path correct, bad
+key — Hydra documents 401, not `<error>`); negative control with bare
+origin `https://hydracker.com` → HTML at `/api` (`expected element type
+<rss> but have <html>`), proving the appended-path difference. Endpoint
+tests `TestClient_Search_APIEndpoint`/`TestClient_Caps_APIEndpoint` assert
+the requested path + `t`/`apikey` for five/four base-URL variants.
 
 **Journey log** — The cardigann-go engine cannot speak the Newznab HTTP API
 (its `torznab` package only emits XML), so a native provider branch is
 unavoidable and the sentinel DefinitionID must short-circuit before every
 `GetDefinitionYAMLFallback`. Newznab reports a bad API key as HTTP 200 +
 `<error>` XML (not a 4xx) — without parsing it, `indexer test` misclassified
-auth failures as parsing errors. The `.gitignore` rule `gowlarr` also
+auth failures as parsing errors — but Hydra documents plain HTTP 401, so
+the classifier must accept both. The `.gitignore` rule `gowlarr` also
 swallowed `cmd/gowlarr/` (untracked CLI main package, breaking `make build`
 in fresh checkouts) — fixed by anchoring the rule to the root (`/gowlarr`). golangci-lint v2 can serve stale
 analysis from its module cache — a clean cache was required for a
 trustworthy 0-issue result. Independent reviews (two at plan time, one at
 implementation time) caught the error-string case-sensitivity bug, the
 missing `download` sentinel branch, and the socks5 DNS-composition comment.
+The `/api` suffix was hardcoded at two call sites; `Caps()` was uncalled
+anywhere but is public API, so it was fixed and tested too. The live
+smoke (custom path → 401, bare origin → HTML) validates endpoint resolution
+in one round.
 
 ## [S1] Problem
 
@@ -177,7 +198,7 @@ reviews):
       `make test`/`vet`/`lint`/`build` green, review findings addressed,
       spec `delivered` with `Report` and commits range (covers: S1-S3;
       depends: T2-T9)
-- [ ] T11: (amendment) custom API endpoint — `Client.apiURL`/`apiEndpoint`
+- [x] T11: (amendment) custom API endpoint — `Client.apiURL`/`apiEndpoint`
       (Search + Caps), tests `TestClient_*_APIEndpoint`, CLI info text +
       README custom-path note, spec amended — acceptance: `make
       vet/lint/test/build` green, endpoint tests green, `add newznab
