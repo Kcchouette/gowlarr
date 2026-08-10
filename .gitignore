@@ -1,5 +1,7 @@
 # Binaires
-gowlarr
+# Ancré à la racine : `gowlarr` non-anché matchait aussi le dossier source
+# cmd/gowlarr/ (même nom que le binaire), le laissant hors de git.
+/gowlarr
 gowlarr.exe
 *.exe
 *.exe~
