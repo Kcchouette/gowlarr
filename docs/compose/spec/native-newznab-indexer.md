@@ -29,13 +29,12 @@ usenet results and serves dynamic caps aggregated from the enabled indexers
 
 **Verification** — `make vet` PASS; `make lint` PASS (0 issues, after a
 `golangci-lint cache clean` that removed a stale per-module analysis cache);
-`go test -race -count=1 ./...` PASS (16 packages). `make build` is blocked
-by a PRE-EXISTING repo quirk independent of this feature: the `.gitignore`
-rule `gowlarr` (built binary) also matches the source directory
-`cmd/gowlarr/`, so the CLI main package is not tracked in git HEAD (verified
-on the pristine main checkout). E2E smoke via a temporary `cmd/` copy
-(removed after): `add newznab --setting` prints the settings summary and
-adds with instance ID = base-URL hostname; `add usenet` alias hits the
+`go test -race -count=1 ./...` PASS (16 packages); `make build` PASS (the
+CLI main package is now tracked — the `.gitignore` rule `gowlarr` was
+anchored to the root as `/gowlarr`, un-ignoring the source directory
+`cmd/gowlarr/`; the built root binary stays ignored). E2E smoke with the
+built binary: `add newznab --setting` prints the settings summary and adds
+with instance ID = base-URL hostname; `add usenet` alias hits the
 duplicate-ID guard suggesting `--id`; an invalid base URL is rejected;
 `indexer test` against the real `api.nzbgeek.info` with a fake key returns
 `authentication failed: newznab indexer api.nzbgeek.info: Invalid API Key
@@ -48,8 +47,8 @@ unavoidable and the sentinel DefinitionID must short-circuit before every
 `GetDefinitionYAMLFallback`. Newznab reports a bad API key as HTTP 200 +
 `<error>` XML (not a 4xx) — without parsing it, `indexer test` misclassified
 auth failures as parsing errors. The `.gitignore` rule `gowlarr` also
-swallows `cmd/gowlarr/` (untracked CLI main package) — pre-existing, blocks
-`make build` in any fresh checkout. golangci-lint v2 can serve stale
+swallowed `cmd/gowlarr/` (untracked CLI main package, breaking `make build`
+in fresh checkouts) — fixed by anchoring the rule to the root (`/gowlarr`). golangci-lint v2 can serve stale
 analysis from its module cache — a clean cache was required for a
 trustworthy 0-issue result. Independent reviews (two at plan time, one at
 implementation time) caught the error-string case-sensitivity bug, the
