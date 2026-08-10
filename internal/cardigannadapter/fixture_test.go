@@ -321,7 +321,10 @@ search:
     showresults: threads
     $raw: "&forums[]=4&forums[]=5&forums[]=8&forums[]=25&forums[]=70&forums[]=75"
   rows:
-    selector: table.tborder tr
+    # Only rows carrying a thread link are results: MyBB's "no results" page
+    # also renders a table.tborder (message row without showthread links), and
+    # matching it would fail every row's title extraction.
+    selector: table.tborder tr:has(a[href*="showthread.php?tid="])
   fields:
     title:
       selector: a[href*="showthread.php?tid="]
@@ -352,11 +355,14 @@ download:
 
 // thelostspaceSearchHTML mimics a MyBB advanced thread-search result page:
 // title block in the 3rd td (a single showthread link), forum in the 4th,
-// last-post date in the 7th td (with trailing "Dernier message" text). The
-// third row is a chit-chat thread in the community forum (fid 11) without an
-// attachment; category filtering happens at query level, so it still parses.
+// last-post date in the 7th td (with trailing "Dernier message" text). A
+// thead header row (no showthread link) precedes the results, like the live
+// page. The third row is a chit-chat thread in the community forum (fid 11)
+// without an attachment; category filtering happens at query level, so it
+// still parses.
 const thelostspaceSearchHTML = `<html><body>
 <table class="tborder">
+  <tr class="thead"><td colspan="8">Résultats de la recherche</td></tr>
   <tr class="inline_row">
     <td align="center" class="trow1" width="2%">&nbsp;</td>
     <td align="center" class="trow1" width="2%">&nbsp;</td>
@@ -463,6 +469,42 @@ func TestTheLostSpaceDefinition_Search(t *testing.T) {
 	}
 	if len(requests) != 1 || !strings.HasPrefix(requests[0], "GET /search.php?") {
 		t.Errorf("expected a single GET /search.php, got %v", requests)
+	}
+}
+
+// mybbNoResultsHTML mimics MyBB's "no results" page for a query with
+// no match: a table.tborder whose rows carry no showthread links. Matching
+// it as rows would fail every title extraction.
+const mybbNoResultsHTML = `<html><body>
+<table class="tborder">
+  <tr class="thead"><td colspan="2">The Lost Space</td></tr>
+  <tr><td>Désolé, mais aucun résultat n&rsquo;a été trouvé avec votre requête. Veuillez réessayer après avoir redéfini les termes de la recherche.</td></tr>
+</table>
+</body></html>`
+
+func TestNoResultsPage_ReturnsNoReleases(t *testing.T) {
+	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+	if err != nil {
+		t.Fatalf("parsing fixture yaml: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/search.php", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, mybbNoResultsHTML)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	inner := cardigannengine.NewProvider(def, server.URL, nil)
+	inner.SkipSearchDownload()
+	provider := NewProvider(inner)
+
+	releases, err := provider.Search(context.Background(), internalsearch.Query{Keywords: "The Deer King 2021"})
+	if err != nil {
+		t.Fatalf("Search must not error on a no-results page: %v", err)
+	}
+	if len(releases) != 0 {
+		t.Fatalf("expected 0 releases on a no-results page, got %d", len(releases))
 	}
 }
 
