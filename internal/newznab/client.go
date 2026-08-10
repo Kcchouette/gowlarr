@@ -121,11 +121,17 @@ func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[
 	}
 
 	// Overrides are applied last so they compose on top of the socks5
-	// dialer: an overridden hostname bypasses the proxy.
+	// dialer: an overridden hostname dials the fixed IP, still through the
+	// proxy when one is configured (OverrideDialContext wraps, not replaces,
+	// the base dialer).
 	if len(overrides) > 0 {
 		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
-		// A custom DialContext disables HTTP/2 by default; re-enable it so
-		// Cloudflare-fronted hosts still negotiate properly.
+	}
+
+	// Any custom DialContext (socks5 or DNS overrides) disables HTTP/2 by
+	// default; re-enable it so Cloudflare-fronted hosts still negotiate
+	// properly.
+	if transport.DialContext != nil {
 		transport.ForceAttemptHTTP2 = true
 	}
 
@@ -247,7 +253,10 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 	headLower := strings.ToLower(string(head))
 	if !strings.Contains(headLower, "<rss") && strings.Contains(headLower, "<error") {
 		var e errorXML
-		if err := xml.NewDecoder(br).Decode(&e); err == nil {
+		// Require at least one attribute: an unrelated element merely
+		// containing the substring "error" must not produce "unknown error
+		// (code )" — it falls through to the RSS parse error instead.
+		if err := xml.NewDecoder(br).Decode(&e); err == nil && (e.Code != "" || e.Description != "") {
 			desc := e.Description
 			if desc == "" {
 				desc = "unknown error"
