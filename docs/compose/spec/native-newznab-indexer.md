@@ -177,9 +177,9 @@ reviews):
       `make test`/`vet`/`lint`/`build` green, review findings addressed,
       spec `delivered` with `Report` and commits range (covers: S1-S3;
       depends: T2-T9)
-- [ ] T11: (amendment) API endpoint custom — `Client.apiURL`/`apiEndpoint`
+- [ ] T11: (amendment) custom API endpoint — `Client.apiURL`/`apiEndpoint`
       (Search + Caps), tests `TestClient_*_APIEndpoint`, CLI info text +
       README custom-path note, spec amended — acceptance: `make
-      vet/lint/test/build` green, tests verts, `add newznab --setting
-      baseurl=<custom-path>` fonctionne et `indexer test` tape le bon chemin
-      (covers: S2)
+      vet/lint/test/build` green, endpoint tests green, `add newznab
+      --setting baseurl=<custom-path>` works and `indexer test` hits the
+      right path (covers: S2)

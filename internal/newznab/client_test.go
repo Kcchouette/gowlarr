@@ -265,7 +265,9 @@ func TestClient_Caps_APIEndpoint(t *testing.T) {
 		name, baseURLSuffix, wantPath string
 	}{
 		{"bare origin", "", "/api"},
+		{"ends with /api", "/api", "/api"}, // no double /api
 		{"custom path", "/api/v1/newznab", "/api/v1/newznab"},
+		{"custom path trailing slash", "/api/v1/newznab/", "/api/v1/newznab"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
