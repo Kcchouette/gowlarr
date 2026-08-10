@@ -3,7 +3,7 @@ feature: native-newznab-indexer
 status: delivered
 updated: 2026-08-10
 branch: feat/native-newznab
-commits: d10030d..8e6c36b
+commits: d10030d..e128d80
 ---
 
 # Native Newznab Indexer
