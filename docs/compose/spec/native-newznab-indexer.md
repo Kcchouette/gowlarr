@@ -1,6 +1,6 @@
 ---
 feature: native-newznab-indexer
-status: delivered
+status: in-progress
 updated: 2026-08-10
 branch: feat/native-newznab
 commits: d10030d..e128d80
@@ -108,6 +108,11 @@ reviews):
   dependency), DNS overrides composed last + `ForceAttemptHTTP2 = true` when
   a DialContext is set. No FlareSolverr, no browser-UA (anti-bot measures
   for scraped HTML, not XML APIs).
+- **API endpoint (amendment).** The client computes the API endpoint once
+  (`Client.apiURL` via `apiEndpoint`): a bare origin gets `/api` appended
+  (standard Newznab, e.g. SpotWeb); a base URL carrying a custom path is
+  used verbatim (e.g. Hydra's `api/v1/newznab`). Applied to both `Search`
+  and `Caps`, backward compatible (existing configs are bare origins).
 - **Newznab `<error>` XML.** A bad API key returns HTTP 200 +
   `<error code="100" description="Invalid API Key"/>`; `Search` parses the
   root element and returns `newznab indexer %s: %s (code %s)` instead of a
@@ -126,9 +131,9 @@ reviews):
   auth headers are needed.
 - **Data flow.** `add newznab` → `AddNewznab` → `SaveIndexerConfig`
   (SQLite). Search/server/test → sentinel branch → `newznabProviderFromConfig`
-  → `NewWithTransport` → `/api?t=...&apikey=...` →
-  `ReleaseInfo{Protocol: usenet}`. Server serves it with `application/x-nzb`
-  enclosures and dynamic caps.
+  → `NewWithTransport` → `<apiURL>?t=...&apikey=...` (`/api` appended to a
+  bare origin, custom path kept verbatim) → `ReleaseInfo{Protocol: usenet}`.
+  Server serves it with `application/x-nzb` enclosures and dynamic caps.
 
 ## [S3] Out of Scope
 
@@ -172,3 +177,9 @@ reviews):
       `make test`/`vet`/`lint`/`build` green, review findings addressed,
       spec `delivered` with `Report` and commits range (covers: S1-S3;
       depends: T2-T9)
+- [ ] T11: (amendment) API endpoint custom — `Client.apiURL`/`apiEndpoint`
+      (Search + Caps), tests `TestClient_*_APIEndpoint`, CLI info text +
+      README custom-path note, spec amended — acceptance: `make
+      vet/lint/test/build` green, tests verts, `add newznab --setting
+      baseurl=<custom-path>` fonctionne et `indexer test` tape le bon chemin
+      (covers: S2)

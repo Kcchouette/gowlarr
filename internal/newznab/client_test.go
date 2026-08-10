@@ -224,3 +224,70 @@ func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
 		t.Error("expected nil DialContext without DNS overrides")
 	}
 }
+
+func TestClient_Search_APIEndpoint(t *testing.T) {
+	cases := []struct {
+		name, baseURLSuffix, wantPath string
+	}{
+		{"bare origin", "", "/api"},
+		{"trailing slash", "/", "/api"},
+		{"ends with /api", "/api", "/api"}, // no double /api
+		{"custom path", "/api/v1/newznab", "/api/v1/newznab"},
+		{"custom path trailing slash", "/api/v1/newznab/", "/api/v1/newznab"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tc.wantPath {
+					t.Errorf("request path = %q, want %q", r.URL.Path, tc.wantPath)
+				}
+				if r.URL.Query().Get("t") != "search" {
+					t.Errorf("expected t=search, got %q", r.URL.Query().Get("t"))
+				}
+				if r.URL.Query().Get("apikey") != "key" {
+					t.Errorf("expected apikey=key, got %q", r.URL.Query().Get("apikey"))
+				}
+				w.Header().Set("Content-Type", "application/xml")
+				w.Write([]byte(`<rss version="2.0"><channel></channel></rss>`))
+			}))
+			defer server.Close()
+
+			client := New("id", "name", server.URL+tc.baseURLSuffix, "key")
+			if _, err := client.Search(context.Background(), search.Query{Keywords: "x"}); err != nil {
+				t.Fatalf("Search: %v", err)
+			}
+		})
+	}
+}
+
+func TestClient_Caps_APIEndpoint(t *testing.T) {
+	cases := []struct {
+		name, baseURLSuffix, wantPath string
+	}{
+		{"bare origin", "", "/api"},
+		{"custom path", "/api/v1/newznab", "/api/v1/newznab"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != tc.wantPath {
+					t.Errorf("request path = %q, want %q", r.URL.Path, tc.wantPath)
+				}
+				if r.URL.Query().Get("t") != "caps" {
+					t.Errorf("expected t=caps, got %q", r.URL.Query().Get("t"))
+				}
+				if r.URL.Query().Get("apikey") != "key" {
+					t.Errorf("expected apikey=key, got %q", r.URL.Query().Get("apikey"))
+				}
+				w.Header().Set("Content-Type", "application/xml")
+				w.Write([]byte(`<caps><searching><search available="yes"/></searching><categories/></caps>`))
+			}))
+			defer server.Close()
+
+			client := New("id", "name", server.URL+tc.baseURLSuffix, "key")
+			if _, err := client.Caps(context.Background()); err != nil {
+				t.Fatalf("Caps: %v", err)
+			}
+		})
+	}
+}
