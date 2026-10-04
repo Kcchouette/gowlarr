@@ -66,7 +66,7 @@ gowlarr search "ubuntu" --indexer 1337x                  # Specific indexer
 gowlarr search "ubuntu" --protocol torrent               # Filter by protocol
 gowlarr search "ubuntu" --categories 2000,2010           # Filter by category
 gowlarr search "ubuntu" --json                           # JSON output
-gowlarr search "bleach" --indexer japanfan --links       # DDL/streaming: show direct links + hosts (display only, no download)
+gowlarr search "some show" --indexer myddl --links       # DDL/streaming: show direct links + hosts (display only, no download)
 ```
 
 DDL and streaming results are display-only: `--links` shows the direct

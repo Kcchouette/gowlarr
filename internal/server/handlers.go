@@ -135,7 +135,7 @@ func (s *Server) capsAvailable() map[string]bool {
 				avail["tv-search"] = true
 			case "movie-search":
 				avail["movie-search"] = true
-			case "music-search", "audio-search": // corpus uses "audio-search" (e.g. hydra.yml)
+			case "music-search", "audio-search": // corpus uses "audio-search" (e.g. some local definition)
 				avail["music-search"] = true
 			case "book-search":
 				avail["book-search"] = true
