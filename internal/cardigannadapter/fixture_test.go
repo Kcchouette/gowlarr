@@ -18,10 +18,10 @@ import (
 	internalsearch "github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// ddlDefinitionYAML is a generic DDL indexer exercising the reply-unlock
+// ddlUnlockDefinitionYAML is a generic DDL indexer exercising the reply-unlock
 // chain pattern: content hidden behind a placeholder until a quick-reply
 // POST (carrying the form's CSRF tokens) reveals the real DDL links.
-const ddlDefinitionYAML = `
+const ddlUnlockDefinitionYAML = `
 id: ddl-demo
 name: DDL Demo
 description: demo ddl indexer (reply-unlock chain)
@@ -147,7 +147,7 @@ func ddlFixtureServer() (*httptest.Server, *[]string) {
 }
 
 func TestDdlDefinition_ReplyUnlockChain(t *testing.T) {
-	def, err := definition.Parse([]byte(ddlDefinitionYAML))
+	def, err := definition.Parse([]byte(ddlUnlockDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestDdlDefinition_ReplyUnlockChain(t *testing.T) {
 }
 
 func TestProvider_SkipSearchDownloadAndResolve(t *testing.T) {
-	def, err := definition.Parse([]byte(ddlDefinitionYAML))
+	def, err := definition.Parse([]byte(ddlUnlockDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestProvider_SkipSearchDownloadAndResolve(t *testing.T) {
 }
 
 func TestDdlDefinition_ReplyUnlockSkipsWhenRevealed(t *testing.T) {
-	def, err := definition.Parse([]byte(ddlDefinitionYAML))
+	def, err := definition.Parse([]byte(ddlUnlockDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -295,13 +295,13 @@ func TestDdlDefinition_ReplyUnlockSkipsWhenRevealed(t *testing.T) {
 	}
 }
 
-// thelostspaceDefinitionYAML mirrors definitions-local/thelostspace.yml
-// (MyBB advanced thread search restricted to release forums + on-demand NZB
+// forumDefinitionYAML mirrors the gitignored local forum definition (MyBB
+// advanced thread search restricted to release forums + on-demand NZB
 // chain), inlined so the test runs in CI without the gitignored definitions
 // directory.
-const thelostspaceDefinitionYAML = `
-id: thelostspace-demo
-name: The Lost Space
+const forumDefinitionYAML = `
+id: forum-demo
+name: Forum Demo
 description: demo usenet forum (MyBB)
 language: fr-FR
 type: usenet
@@ -353,14 +353,14 @@ download:
       usebeforeresponse: true
 `
 
-// thelostspaceSearchHTML mimics a MyBB advanced thread-search result page:
+// forumSearchHTML mimics a MyBB advanced thread-search result page:
 // title block in the 3rd td (a single showthread link), forum in the 4th,
 // last-post date in the 7th td (with trailing "Dernier message" text). A
 // thead header row (no showthread link) precedes the results, like the live
 // page. The third row is a chit-chat thread in the community forum (fid 11)
 // without an attachment; category filtering happens at query level, so it
 // still parses.
-const thelostspaceSearchHTML = `<html><body>
+const forumSearchHTML = `<html><body>
 <table class="tborder">
   <tr class="thead"><td colspan="8">Résultats de la recherche</td></tr>
   <tr class="inline_row">
@@ -396,23 +396,23 @@ const thelostspaceSearchHTML = `<html><body>
 </table>
 </body></html>`
 
-// thelostspaceThreadHTML mimics a release thread page: the NZB attachment
+// forumThreadHTML mimics a release thread page: the NZB attachment
 // link only exists here, never on the search page.
-const thelostspaceThreadHTML = `<html><body>
+const forumThreadHTML = `<html><body>
 <div class="postbody">
   <div class="content"><a href="attachment.php?aid=100">BLOOM-S01.nzb</a></div>
 </div>
 </body></html>`
 
-// thelostspaceJunkThreadHTML mimics a chit-chat thread page: no attachment.
-const thelostspaceJunkThreadHTML = `<html><body>
+// junkThreadHTML mimics a chit-chat thread page: no attachment.
+const junkThreadHTML = `<html><body>
 <div class="postbody">
   <div class="content">Voili voilou, rien à télécharger ici.</div>
 </div>
 </body></html>`
 
-func TestTheLostSpaceDefinition_Search(t *testing.T) {
-	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+func TestForumDefinition_Search(t *testing.T) {
+	def, err := definition.Parse([]byte(forumDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestTheLostSpaceDefinition_Search(t *testing.T) {
 	mux.HandleFunc("/search.php", func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
 		searchQuery = r.URL.Query()
-		fmt.Fprint(w, thelostspaceSearchHTML)
+		fmt.Fprint(w, forumSearchHTML)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -477,13 +477,13 @@ func TestTheLostSpaceDefinition_Search(t *testing.T) {
 // it as rows would fail every title extraction.
 const mybbNoResultsHTML = `<html><body>
 <table class="tborder">
-  <tr class="thead"><td colspan="2">The Lost Space</td></tr>
+  <tr class="thead"><td colspan="2">Forum Demo</td></tr>
   <tr><td>Désolé, mais aucun résultat n&rsquo;a été trouvé avec votre requête. Veuillez réessayer après avoir redéfini les termes de la recherche.</td></tr>
 </table>
 </body></html>`
 
 func TestNoResultsPage_ReturnsNoReleases(t *testing.T) {
-	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+	def, err := definition.Parse([]byte(forumDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -508,8 +508,8 @@ func TestNoResultsPage_ReturnsNoReleases(t *testing.T) {
 	}
 }
 
-func TestTheLostSpaceDefinition_ResolveLinks(t *testing.T) {
-	def, err := definition.Parse([]byte(thelostspaceDefinitionYAML))
+func TestForumDefinition_ResolveLinks(t *testing.T) {
+	def, err := definition.Parse([]byte(forumDefinitionYAML))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -519,10 +519,10 @@ func TestTheLostSpaceDefinition_ResolveLinks(t *testing.T) {
 	mux.HandleFunc("/showthread.php", func(w http.ResponseWriter, r *http.Request) {
 		requests = append(requests, r.Method+" "+r.URL.Path+"?"+r.URL.RawQuery)
 		if r.URL.Query().Get("tid") == "99" {
-			fmt.Fprint(w, thelostspaceJunkThreadHTML)
+			fmt.Fprint(w, junkThreadHTML)
 			return
 		}
-		fmt.Fprint(w, thelostspaceThreadHTML)
+		fmt.Fprint(w, forumThreadHTML)
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
@@ -536,7 +536,7 @@ func TestTheLostSpaceDefinition_ResolveLinks(t *testing.T) {
 		Title:        "BLOOM S01 MULTi 1080p WEB x264 AAC -Tsundere-Raws (NF)",
 		DownloadLink: "showthread.php?tid=10&highlight=tsundere",
 		Protocol:     model.ProtocolUsenet,
-		IndexerID:    "thelostspace.xyz",
+		IndexerID:    "example.invalid",
 	}
 	resolved, err := provider.ResolveDownloadLink(context.Background(), rel)
 	if err != nil {
@@ -552,7 +552,7 @@ func TestTheLostSpaceDefinition_ResolveLinks(t *testing.T) {
 		Title:        "Voili voilou",
 		DownloadLink: "showthread.php?tid=99&highlight=tsundere",
 		Protocol:     model.ProtocolUsenet,
-		IndexerID:    "thelostspace.xyz",
+		IndexerID:    "example.invalid",
 	}
 	resolvedJunk, err := provider.ResolveDownloadLink(context.Background(), junk)
 	if err == nil {

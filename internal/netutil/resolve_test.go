@@ -14,10 +14,10 @@ func TestOverrideDialContext(t *testing.T) {
 		return nil, errors.New("dial not needed in test")
 	}
 
-	overrides := map[string]string{"hydracker.com": "104.21.16.105"}
+	overrides := map[string]string{"example.invalid": "104.21.16.105"}
 	dial := OverrideDialContext(base, overrides)
 
-	_, _ = dial(context.Background(), "tcp", "hydracker.com:443")
+	_, _ = dial(context.Background(), "tcp", "example.invalid:443")
 	if len(dialed) != 1 || dialed[0] != "104.21.16.105:443" {
 		t.Fatalf("overridden host should dial the fixed IP with original port, got %v", dialed)
 	}
@@ -58,9 +58,9 @@ func TestSetDNSOverridesLowercasesKeys(t *testing.T) {
 	originalOverrides := dnsOverrides
 	t.Cleanup(func() { dnsOverrides = originalOverrides })
 
-	SetDNSOverrides(map[string]string{"HydraTracker.COM": "104.21.16.105"})
+	SetDNSOverrides(map[string]string{"ExampleTracker.COM": "104.21.16.105"})
 
-	addrs, err := lookupHost(context.Background(), "hydratracker.com")
+	addrs, err := lookupHost(context.Background(), "exampletracker.com")
 	if err != nil {
 		t.Fatalf("lookupHost with mixed-case override key: %v", err)
 	}
@@ -75,11 +75,11 @@ func TestLookupHostWithOverrides(t *testing.T) {
 	originalOverrides := dnsOverrides
 	t.Cleanup(func() { dnsOverrides = originalOverrides })
 
-	SetDNSOverrides(map[string]string{"hydracker.com": "104.21.16.105"})
+	SetDNSOverrides(map[string]string{"example.invalid": "104.21.16.105"})
 
 	// The override map short-circuits the real resolver: the fixed IP is
 	// returned without any DNS lookup.
-	addrs, err := lookupHost(context.Background(), "hydracker.com")
+	addrs, err := lookupHost(context.Background(), "example.invalid")
 	if err != nil {
 		t.Fatalf("lookupHost with override: %v", err)
 	}

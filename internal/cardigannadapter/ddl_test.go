@@ -15,15 +15,15 @@ import (
 	internalsearch "github.com/Kcchouette/gowlarr/internal/search"
 )
 
-// hydraddlDefinitionYAML mirrors definitions-local/hydraddl.yml (the DDL
-// section of hydracker.com): a search.before step resolves the title id from
-// the public title search, then the search path lists every DDL lien of that
-// title. Inlined so the test runs in CI without the gitignored definitions
-// directory. %s is replaced by the test server base URL.
-const hydraddlDefinitionYAML = `
-id: hydraddl
-name: Hydra DDL
-description: direct-download section of hydracker.com (fixture)
+// ddlDefinitionYAML mirrors the gitignored local DDL definition: a
+// search.before step resolves the title id from the public title search,
+// then the search path lists every DDL lien of that title. Inlined so the
+// test runs in CI without the gitignored definitions directory. %s is
+// replaced by the test server base URL.
+const ddlDefinitionYAML = `
+id: ddl-demo
+name: DDL Demo
+description: direct-download section of the DDL site (fixture)
 language: fr-FR
 type: ddl
 encoding: UTF-8
@@ -96,22 +96,22 @@ search:
         app: 4000
         "*": 8000
     details:
-      text: "https://hydracker.com/titles/{{ .Before.title.id }}"
+      text: "https://example.invalid/titles/{{ .Before.title.id }}"
     download:
-      text: '{{ if eq .Result._full_saison "1" }}https://hydracker.com/titles/{{ .Before.title.id }}/season/{{ .Result._season }}/download{{ else }}https://hydracker.com/titles/{{ .Before.title.id }}/season/{{ .Result._season }}/episode/{{ .Result._episode }}/download{{ end }}'
+      text: '{{ if eq .Result._full_saison "1" }}https://example.invalid/titles/{{ .Before.title.id }}/season/{{ .Result._season }}/download{{ else }}https://example.invalid/titles/{{ .Before.title.id }}/season/{{ .Result._season }}/episode/{{ .Result._episode }}/download{{ end }}'
 `
 
-const hydraddlTitleJSON = `{"pagination":{"data":[{"id":179751,"name":"House of the Dragon","type":"series"}]}}`
+const ddlTitleJSON = `{"pagination":{"data":[{"id":179751,"name":"House of the Dragon","type":"series"}]}}`
 
-const hydraddlLiensJSON = `{"liens":[
+const ddlLiensJSON = `{"liens":[
 	{"id":1,"saison":1,"episode":1,"full_saison":0,"taille":9800362833,"created_at":"2022-12-31T03:21:19.000000Z","host":{"name":"1Fichier"},"qual":{"qual":"Blu-Ray 1080p"}},
 	{"id":2,"saison":2,"episode":0,"full_saison":1,"taille":19022414451,"created_at":"2024-08-05T05:53:19.000000Z","host":{"name":"1Fichier"},"qual":{"qual":"ULTRA HD (x265)"}}
 ]}`
 
-// hydraddlServer serves the two-step API and records the bearer header and
+// ddlServer serves the two-step API and records the bearer header and
 // the requests it receives. expectedBearer is asserted on every request
 // ("" disables the assertion).
-func hydraddlServer(t *testing.T, titleBody string, liensBody string, statusForSearch int, expectedBearer string) (*httptest.Server, *[]string, *int) {
+func ddlServer(t *testing.T, titleBody string, liensBody string, statusForSearch int, expectedBearer string) (*httptest.Server, *[]string, *int) {
 	t.Helper()
 	var requests []string
 	var searchCalls int
@@ -148,11 +148,11 @@ func hydraddlServer(t *testing.T, titleBody string, liensBody string, statusForS
 	return httptest.NewServer(mux), &requests, &searchCalls
 }
 
-func TestHydraDdlDefinition_Search(t *testing.T) {
-	server, requests, searchCalls := hydraddlServer(t, hydraddlTitleJSON, hydraddlLiensJSON, http.StatusOK, "Bearer sekret")
+func TestDDLDefinition_Search(t *testing.T) {
+	server, requests, searchCalls := ddlServer(t, ddlTitleJSON, ddlLiensJSON, http.StatusOK, "Bearer sekret")
 	defer server.Close()
 
-	def, err := definition.Parse([]byte(fmt.Sprintf(hydraddlDefinitionYAML, server.URL)))
+	def, err := definition.Parse([]byte(fmt.Sprintf(ddlDefinitionYAML, server.URL)))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -181,10 +181,10 @@ func TestHydraDdlDefinition_Search(t *testing.T) {
 	if len(ep.Categories) != 1 || ep.Categories[0] != 5000 {
 		t.Errorf("Categories = %v, want [5000] (TV)", ep.Categories)
 	}
-	if ep.Details != "https://hydracker.com/titles/179751" {
+	if ep.Details != "https://example.invalid/titles/179751" {
 		t.Errorf("Details = %q", ep.Details)
 	}
-	if ep.DownloadLink != "https://hydracker.com/titles/179751/season/1/episode/1/download" {
+	if ep.DownloadLink != "https://example.invalid/titles/179751/season/1/episode/1/download" {
 		t.Errorf("DownloadLink = %q", ep.DownloadLink)
 	}
 	if ep.Protocol != model.ProtocolDDL {
@@ -195,7 +195,7 @@ func TestHydraDdlDefinition_Search(t *testing.T) {
 	if season.Title != "House of the Dragon S2 (saison complete) - ULTRA HD (x265) [1Fichier]" {
 		t.Errorf("season Title = %q", season.Title)
 	}
-	if season.DownloadLink != "https://hydracker.com/titles/179751/season/2/download" {
+	if season.DownloadLink != "https://example.invalid/titles/179751/season/2/download" {
 		t.Errorf("season DownloadLink = %q", season.DownloadLink)
 	}
 
@@ -211,11 +211,11 @@ func TestHydraDdlDefinition_Search(t *testing.T) {
 	_ = searchCalls
 }
 
-func TestHydraDdlDefinition_NoTitleMatch(t *testing.T) {
-	server, requests, searchCalls := hydraddlServer(t, `{"pagination":{"data":[]}}`, hydraddlLiensJSON, http.StatusOK, "Bearer sekret")
+func TestDDLDefinition_NoTitleMatch(t *testing.T) {
+	server, requests, searchCalls := ddlServer(t, `{"pagination":{"data":[]}}`, ddlLiensJSON, http.StatusOK, "Bearer sekret")
 	defer server.Close()
 
-	def, err := definition.Parse([]byte(fmt.Sprintf(hydraddlDefinitionYAML, server.URL)))
+	def, err := definition.Parse([]byte(fmt.Sprintf(ddlDefinitionYAML, server.URL)))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}
@@ -239,11 +239,11 @@ func TestHydraDdlDefinition_NoTitleMatch(t *testing.T) {
 // The liens request answers 401: the search path failure must surface as an
 // error, not a silent empty result. (A 401 on the search.before step itself
 // is covered by the fork engine test TestSearchBefore_HTTPFailure_AbortsWithError.)
-func TestHydraDdlDefinition_SearchPathUnauthorized(t *testing.T) {
-	server, _, _ := hydraddlServer(t, hydraddlTitleJSON, hydraddlLiensJSON, http.StatusUnauthorized, "")
+func TestDDLDefinition_SearchPathUnauthorized(t *testing.T) {
+	server, _, _ := ddlServer(t, ddlTitleJSON, ddlLiensJSON, http.StatusUnauthorized, "")
 	defer server.Close()
 
-	def, err := definition.Parse([]byte(fmt.Sprintf(hydraddlDefinitionYAML, server.URL)))
+	def, err := definition.Parse([]byte(fmt.Sprintf(ddlDefinitionYAML, server.URL)))
 	if err != nil {
 		t.Fatalf("parsing fixture yaml: %v", err)
 	}

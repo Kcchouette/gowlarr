@@ -129,11 +129,11 @@ func TestAbsolutizeLink(t *testing.T) {
 	cases := []struct {
 		name, link, base, want string
 	}{
-		{"relative path", "attachment.php?aid=100", "https://thelostspace.xyz/", "https://thelostspace.xyz/attachment.php?aid=100"},
-		{"relative subpath", "forum/showthread.php?tid=10", "https://thelostspace.xyz/", "https://thelostspace.xyz/forum/showthread.php?tid=10"},
-		{"absolute https passes through", "https://other.invalid/dl/1.nzb", "https://thelostspace.xyz/", "https://other.invalid/dl/1.nzb"},
-		{"magnet passes through", "magnet:?xt=urn:btih:abc", "https://thelostspace.xyz/", "magnet:?xt=urn:btih:abc"},
-		{"empty link passes through", "", "https://thelostspace.xyz/", ""},
+		{"relative path", "attachment.php?aid=100", "https://example.invalid/", "https://example.invalid/attachment.php?aid=100"},
+		{"relative subpath", "forum/showthread.php?tid=10", "https://example.invalid/", "https://example.invalid/forum/showthread.php?tid=10"},
+		{"absolute https passes through", "https://other.invalid/dl/1.nzb", "https://example.invalid/", "https://other.invalid/dl/1.nzb"},
+		{"magnet passes through", "magnet:?xt=urn:btih:abc", "https://example.invalid/", "magnet:?xt=urn:btih:abc"},
+		{"empty link passes through", "", "https://example.invalid/", ""},
 		{"empty base passes through", "attachment.php?aid=1", "", "attachment.php?aid=1"},
 	}
 	for _, c := range cases {

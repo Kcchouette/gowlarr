@@ -202,7 +202,7 @@ func newznabSyntheticDefinition() definition.IndexerDefinition {
 		Settings: []definition.Setting{
 			{Name: "baseurl", Type: "text", Label: "Base URL"},
 			{Name: "apikey", Type: "password", Label: "API Key"},
-			{Name: "info", Type: "info", Default: "Base URL: the indexer's API endpoint root, e.g. https://api.nzbgeek.info/. Indexers exposing the API under a custom path (e.g. Hydra: https://hydracker.com/api/v1/newznab) take the full path. API key: your indexer profile/API settings page."},
+			{Name: "info", Type: "info", Default: "Base URL: the indexer's API endpoint root, e.g. https://api.nzbgeek.info/. Indexers exposing the API under a custom path (e.g. https://example.invalid/api/v1/newznab) take the full path. API key: your indexer profile/API settings page."},
 		},
 	}
 }

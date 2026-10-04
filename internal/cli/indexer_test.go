@@ -9,7 +9,7 @@ func TestIsNewznabAlias(t *testing.T) {
 			t.Errorf("expected %q to be a newznab alias", q)
 		}
 	}
-	negatives := []string{"usenet-crawler", "1337x", "newznab-plus", "hydra", ""}
+	negatives := []string{"usenet-crawler", "1337x", "newznab-plus", "some-tracker", ""}
 	for _, q := range negatives {
 		if isNewznabAlias(q) {
 			t.Errorf("expected %q NOT to be a newznab alias", q)

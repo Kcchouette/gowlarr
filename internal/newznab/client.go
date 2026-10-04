@@ -80,7 +80,7 @@ func transportWithOverrides(overrides map[string]string) *http.Transport {
 
 // apiEndpoint returns the API endpoint for a base URL: the standard Newznab
 // endpoint is <base>/api, but an indexer exposing its API under a custom
-// path (e.g. Hydra's api/v1/newznab) passes the full path verbatim.
+// path (e.g. api/v1/newznab) passes the full path verbatim.
 func apiEndpoint(baseURL string) string {
 	trimmed := strings.TrimRight(baseURL, "/")
 	u, err := url.Parse(trimmed)

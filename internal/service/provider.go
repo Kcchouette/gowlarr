@@ -39,7 +39,7 @@ func applyDNSOverrides(client *httpclient.IndexerClient, overrides map[string]st
 	cloned := tr.Clone()
 	cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
 	// A custom DialContext disables HTTP/2 by default; re-enable it so
-	// Cloudflare-fronted hosts (e.g. hydra) still negotiate properly.
+	// Cloudflare-fronted hosts (e.g. a private tracker) still negotiate properly.
 	cloned.ForceAttemptHTTP2 = true
 	client.HTTPClient().Transport = cloned
 }

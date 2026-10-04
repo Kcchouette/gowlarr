@@ -66,7 +66,7 @@ gowlarr search "ubuntu" --indexer 1337x                  # Specific indexer
 gowlarr search "ubuntu" --protocol torrent               # Filter by protocol
 gowlarr search "ubuntu" --categories 2000,2010           # Filter by category
 gowlarr search "ubuntu" --json                           # JSON output
-gowlarr search "bleach" --indexer japanfan --links       # DDL/streaming: show direct links + hosts (display only, no download)
+gowlarr search "some show" --indexer myddl --links       # DDL/streaming: show direct links + hosts (display only, no download)
 ```
 
 DDL and streaming results are display-only: `--links` shows the direct
@@ -96,8 +96,8 @@ The reserved aliases `newznab`, `nzb` and `usenet` add a native Newznab
 indexer (persisted in SQLite, served by the native Newznab client, part of
 every search and of the Torznab/Newznab server). The instance ID defaults to
 the base URL's hostname (`--id` overrides it). A bare origin gets `/api`
-appended; indexers exposing the API under a custom path (e.g. Hydra:
-`https://hydracker.com/api/v1/newznab`) take the full URL. For a one-off
+appended; indexers exposing the API under a custom path (e.g.
+`https://example.invalid/api/v1/newznab`) take the full URL. For a one-off
 search without persisting anything:
 
 ```bash
