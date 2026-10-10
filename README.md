@@ -95,8 +95,10 @@ gowlarr indexer test indexer                   # test connectivity/authenticatio
 The reserved aliases `newznab`, `nzb` and `usenet` add a native Newznab
 indexer (persisted in SQLite, served by the native Newznab client, part of
 every search and of the Torznab/Newznab server). The instance ID defaults to
-the base URL's hostname (`--id` overrides it). For a one-off search without
-persisting anything:
+the base URL's hostname (`--id` overrides it). A bare origin gets `/api`
+appended; indexers exposing the API under a custom path (e.g.
+`https://example.invalid/api/v1/newznab`) take the full URL. For a one-off
+search without persisting anything:
 
 ```bash
 gowlarr search "query" --newznab-url https://indexer.example.com --newznab-apikey YOUR_KEY

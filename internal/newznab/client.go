@@ -36,6 +36,9 @@ type Client struct {
 	IndexerID   string
 	IndexerName string
 	HTTPClient  *http.Client
+	// apiURL is the full API endpoint (BaseURL + "/api" for a bare origin,
+	// BaseURL verbatim when it carries a custom path), computed once.
+	apiURL string
 }
 
 // sharedTransport is a tuned transport shared by all Newznab clients:
@@ -75,14 +78,28 @@ func transportWithOverrides(overrides map[string]string) *http.Transport {
 	return transport
 }
 
+// apiEndpoint returns the API endpoint for a base URL: the standard Newznab
+// endpoint is <base>/api, but an indexer exposing its API under a custom
+// path (e.g. api/v1/newznab) passes the full path verbatim.
+func apiEndpoint(baseURL string) string {
+	trimmed := strings.TrimRight(baseURL, "/")
+	u, err := url.Parse(trimmed)
+	if err != nil || u.Path == "" {
+		return trimmed + "/api"
+	}
+	return trimmed
+}
+
 // newClient builds the client around a pre-built transport.
 func newClient(id, name, baseURL, apiKey string, transport *http.Transport) *Client {
+	trimmed := strings.TrimRight(baseURL, "/")
 	return &Client{
-		BaseURL:     strings.TrimRight(baseURL, "/"),
+		BaseURL:     trimmed,
 		APIKey:      apiKey,
 		IndexerID:   id,
 		IndexerName: name,
 		HTTPClient:  &http.Client{Timeout: 20 * time.Second, Transport: transport}, // Newznab typically responds quickly; 20s gives network margin without blocking the UI too long.
+		apiURL:      apiEndpoint(trimmed),
 	}
 }
 
@@ -225,7 +242,7 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 		params.Set("tmdbid", q.TMDBID)
 	}
 
-	reqURL := fmt.Sprintf("%s/api?%s", c.BaseURL, params.Encode())
+	reqURL := fmt.Sprintf("%s?%s", c.apiURL, params.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("building newznab request: %w", err)
@@ -367,7 +384,7 @@ type capsCategory struct {
 
 // Caps queries the indexer for its capabilities.
 func (c *Client) Caps(ctx context.Context) (Caps, error) {
-	reqURL := fmt.Sprintf("%s/api?t=caps&apikey=%s", c.BaseURL, url.QueryEscape(c.APIKey))
+	reqURL := fmt.Sprintf("%s?t=caps&apikey=%s", c.apiURL, url.QueryEscape(c.APIKey))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return Caps{}, fmt.Errorf("building caps request: %w", err)
