@@ -55,8 +55,8 @@ func TestOverrideDialContextNilBase(t *testing.T) {
 }
 
 func TestSetDNSOverridesLowercasesKeys(t *testing.T) {
-	originalOverrides := dnsOverrides
-	t.Cleanup(func() { dnsOverrides = originalOverrides })
+	original := dnsOverrides.Load()
+	t.Cleanup(func() { dnsOverrides.Store(original) })
 
 	SetDNSOverrides(map[string]string{"ExampleTracker.COM": "104.21.16.105"})
 
@@ -72,8 +72,8 @@ func TestSetDNSOverridesLowercasesKeys(t *testing.T) {
 }
 
 func TestLookupHostWithOverrides(t *testing.T) {
-	originalOverrides := dnsOverrides
-	t.Cleanup(func() { dnsOverrides = originalOverrides })
+	original := dnsOverrides.Load()
+	t.Cleanup(func() { dnsOverrides.Store(original) })
 
 	SetDNSOverrides(map[string]string{"example.invalid": "104.21.16.105"})
 

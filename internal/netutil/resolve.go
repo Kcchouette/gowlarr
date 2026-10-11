@@ -4,27 +4,36 @@ import (
 	"context"
 	"net"
 	"strings"
+	"sync/atomic"
 )
 
 // dnsOverrides maps hostnames to fixed IP addresses, applied at dial time
-// and DNS lookup time (equivalent to curl's --resolve). Configured via
-// config.DNSOverrides and wired in by the service layer.
-var dnsOverrides map[string]string
+// and DNS lookup time (equivalent to curl's --resolve). Configured once at
+// startup and read from request paths, so it is held behind an atomic pointer
+// to keep the read side lock-free and race-free.
+var dnsOverrides atomic.Pointer[map[string]string]
 
 // SetDNSOverrides installs the global hostname→IP overrides. Keys are
 // normalized to lowercase (hostnames are case-insensitive). An empty or nil
-// map disables overrides. Not safe for concurrent mutation; call once at
-// startup.
+// map disables overrides. Safe to call concurrently with readers.
 func SetDNSOverrides(overrides map[string]string) {
 	if len(overrides) == 0 {
-		dnsOverrides = nil
+		dnsOverrides.Store(nil)
 		return
 	}
 	normalized := make(map[string]string, len(overrides))
 	for host, ip := range overrides {
 		normalized[strings.ToLower(host)] = ip
 	}
-	dnsOverrides = normalized
+	dnsOverrides.Store(&normalized)
+}
+
+// currentDNSOverrides returns the installed override map (nil when none).
+func currentDNSOverrides() map[string]string {
+	if m := dnsOverrides.Load(); m != nil {
+		return *m
+	}
+	return nil
 }
 
 // OverrideDialContext wraps a base DialContext so that connections to

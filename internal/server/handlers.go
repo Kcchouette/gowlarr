@@ -8,11 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Kcchouette/cardigann-go/definition"
-
 	"github.com/Kcchouette/gowlarr/internal/model"
 	"github.com/Kcchouette/gowlarr/internal/service"
-	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
 func (s *Server) handleAPI(w http.ResponseWriter, r *http.Request) {
@@ -91,60 +88,20 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 }
 
 // capsModes is the set of Torznab/Newznab search modes advertised in caps.
-var capsModes = []string{"search", "tv-search", "movie-search", "music-search", "book-search"}
+var capsModes = service.CapsSearchModes
 
-// capsAvailable aggregates the search modes supported by the enabled
-// indexers: a mode is available if at least one enabled indexer supports it.
-// Native Newznab indexers support all five modes; Cardigann defs contribute
-// their caps.modes (with the corpus's "audio-search" normalized to the caps
-// XML's "music-search"). A nil store (server tests) keeps the historical
-// all-yes behavior.
+// capsAvailable reports the modes supported by the enabled indexers. A nil
+// store (server tests) keeps the historical all-yes behavior; the aggregation
+// itself lives in the service layer.
 func (s *Server) capsAvailable() map[string]bool {
-	avail := make(map[string]bool, len(capsModes))
 	if s.store == nil {
+		avail := make(map[string]bool, len(capsModes))
 		for _, m := range capsModes {
 			avail[m] = true
 		}
 		return avail
 	}
-	configs, err := s.store.ListIndexerConfigs(true, nil)
-	if err != nil {
-		slog.Warn("caps: listing indexer configs", "err", err)
-		return avail
-	}
-	for _, cfg := range configs {
-		if cfg.DefinitionID == store.NewznabDefinitionID {
-			// Native Newznab: all five modes (the persisted settings carry
-			// no per-indexer caps information).
-			for _, m := range capsModes {
-				avail[m] = true
-			}
-			continue
-		}
-		raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
-		if err != nil {
-			continue
-		}
-		def, err := definition.Parse([]byte(raw))
-		if err != nil {
-			continue
-		}
-		for mode := range def.Caps.Modes {
-			switch mode {
-			case "search":
-				avail["search"] = true
-			case "tv-search":
-				avail["tv-search"] = true
-			case "movie-search":
-				avail["movie-search"] = true
-			case "music-search", "audio-search": // corpus uses "audio-search" (e.g. some local definition)
-				avail["music-search"] = true
-			case "book-search":
-				avail["book-search"] = true
-			}
-		}
-	}
-	return avail
+	return service.AvailableSearchModes(s.store)
 }
 
 func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {

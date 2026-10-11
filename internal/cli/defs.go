@@ -10,7 +10,7 @@ import (
 	"github.com/Kcchouette/cardigann-go/defs"
 	"github.com/spf13/cobra"
 
-	"github.com/Kcchouette/gowlarr/internal/store"
+	"github.com/Kcchouette/gowlarr/internal/service"
 )
 
 func newDefsCmd() *cobra.Command {
@@ -89,7 +89,8 @@ func newDefsSyncCmd() *cobra.Command {
 			// Repo-local definitions (definitions-local/*.yml) are ingested
 			// regardless of the remote sync result, so `indexer add` can
 			// resolve them even when the remote corpus is unchanged.
-			localCount, err := ingestLocalDefinitions(st)
+			svc := service.NewDefinitionService(st, cfg)
+			localCount, err := svc.IngestLocal(localDefsDir())
 			if err != nil {
 				return err
 			}
@@ -109,13 +110,13 @@ func newDefsListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List Cardigann definitions in local cache",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, _, err := openStore()
+			st, cfg, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer st.Close()
 
-			metas, err := st.ListDefinitions(version)
+			metas, err := service.NewDefinitionService(st, cfg).List(version)
 			if err != nil {
 				return err
 			}
@@ -140,13 +141,15 @@ func newDefsShowCmd() *cobra.Command {
 		Short: "Show a Cardigann definition in cache (summary)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, _, err := openStore()
+			st, cfg, err := openStore()
 			if err != nil {
 				return err
 			}
 			defer st.Close()
 
-			raw, err := st.GetDefinitionYAML(args[0], version)
+			// Empty version selects the highest-priority cached version,
+			// matching the `defs show` CLI contract.
+			raw, err := service.NewDefinitionService(st, cfg).Show(args[0], version)
 			if err != nil {
 				return err
 			}
@@ -183,40 +186,6 @@ func localDefsDir() string {
 		}
 	}
 	return ""
-}
-
-// ingestLocalDefinitions upserts the repo-local definitions
-// (definitions-local/*.yml) into the cache under version "local". Returns the
-// number of ingested definitions.
-func ingestLocalDefinitions(st *store.Store) (int, error) {
-	dir := localDefsDir()
-	if dir == "" {
-		return 0, nil
-	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return 0, fmt.Errorf("reading local definitions dir: %w", err)
-	}
-
-	count := 0
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yml") {
-			continue
-		}
-		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
-		if err != nil {
-			return count, fmt.Errorf("reading local definition %s: %w", e.Name(), err)
-		}
-		def, err := definition.Parse(raw)
-		if err != nil {
-			return count, fmt.Errorf("parsing local definition %s: %w", e.Name(), err)
-		}
-		if err := st.SaveDefinition(def.ID, "local", "", string(raw)); err != nil {
-			return count, err
-		}
-		count++
-	}
-	return count, nil
 }
 
 func methodOrNone(method string) string {

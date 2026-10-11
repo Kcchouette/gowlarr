@@ -22,9 +22,11 @@ func Execute() {
 	}
 }
 
-func newRootCmd() *cobra.Command {
-	var verbose bool
+// verboseFlag tracks the root --verbose flag so openStore can apply the
+// configured log level only when the flag did not already request debug.
+var verboseFlag bool
 
+func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "gowlarr",
 		Short: "Gowlarr — torrent/usenet indexer manager in Go",
@@ -35,14 +37,14 @@ Not affiliated with Prowlarr/Servarr. See README for the full legal disclaimer.
 You are solely responsible for how you use this tool.`,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
 			level := "info"
-			if verbose {
+			if verboseFlag {
 				level = "debug"
 			}
 			golog.SetupLogger(level, false)
 		},
 	}
 
-	root.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose debug logging")
+	root.PersistentFlags().BoolVarP(&verboseFlag, "verbose", "v", false, "Enable verbose debug logging")
 
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newDefsCmd())
@@ -60,6 +62,11 @@ func openStore() (*store.Store, config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return nil, config.Config{}, fmt.Errorf("loading config: %w", err)
+	}
+	// The --verbose flag wins over the config file; otherwise honor the
+	// configured log level (SetupLogger falls back to info for unknown values).
+	if !verboseFlag && cfg.LogLevel != "" {
+		golog.SetupLogger(cfg.LogLevel, false)
 	}
 	// Install DNS overrides globally so SSRF validation (netutil.ValidateURL)
 	// resolves overridden hostnames before the dial.
