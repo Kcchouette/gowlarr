@@ -103,7 +103,13 @@ func printStyledTable(results []model.ReleaseInfo, linksOutput bool) {
 		BorderHeader(true)
 
 	fmt.Println(t.Render())
-	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", len(results))
+	printResultsSummary(len(results))
+}
+
+// printResultsSummary prints the trailing result count and usage hint shared
+// by the styled and plain result tables.
+func printResultsSummary(n int) {
+	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", n)
 }
 
 func printPlainTable(results []model.ReleaseInfo, linksOutput bool) {
@@ -122,7 +128,7 @@ func printPlainTable(results []model.ReleaseInfo, linksOutput bool) {
 				cells[0], cells[1], cells[2], cells[3], cells[4], cells[5], cells[6], cells[7])
 		}
 	}
-	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", len(results))
+	printResultsSummary(len(results))
 }
 
 // displayLink returns the link shown by `search --links`: the streaming URL

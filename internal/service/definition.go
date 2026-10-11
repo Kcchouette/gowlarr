@@ -35,15 +35,18 @@ func (s *DefinitionService) List(version string) ([]store.DefinitionMeta, error)
 }
 
 // Show returns the raw YAML of a definition at the requested schema version.
-// An empty version selects the highest-priority cached version, matching the
-// `defs show` CLI contract (empty default falls back through the version
-// chain; a non-empty version pins that exact version).
+// It always calls GetDefinitionYAML so `defs show` keeps its historical
+// behavior: the CLI sets the "v11" default at the call-site, and an explicit
+// empty --version= errors instead of silently falling back to another version.
 func (s *DefinitionService) Show(id, version string) (string, error) {
-	if version == "" {
-		raw, _, err := s.store.GetDefinitionYAMLFallback(id)
-		return raw, err
-	}
 	return s.store.GetDefinitionYAML(id, version)
+}
+
+// Load fetches and parses a definition at the requested schema version,
+// reusing the content-addressed parse cache. An empty version selects the
+// highest-priority cached version.
+func (s *DefinitionService) Load(id, version string) (definition.IndexerDefinition, error) {
+	return loadDefinition(s.store, id, version)
 }
 
 // IngestLocal upserts the repo-local definitions (definitions-local/*.yml)

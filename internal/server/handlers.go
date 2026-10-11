@@ -88,7 +88,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 }
 
 // capsModes is the set of Torznab/Newznab search modes advertised in caps.
-var capsModes = service.CapsSearchModes
+// Copied from the service package so a mutation here cannot corrupt the
+// shared service slice.
+var capsModes = append([]string(nil), service.CapsSearchModes...)
 
 // capsAvailable reports the modes supported by the enabled indexers. A nil
 // store (server tests) keeps the historical all-yes behavior; the aggregation

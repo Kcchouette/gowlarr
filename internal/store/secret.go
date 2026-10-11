@@ -14,7 +14,7 @@ import (
 // encrypted column is left untouched. With a non-nil key the payload is
 // encrypted and the plain column is emptied. Callers keep the two column
 // writes on separate upserts so a key toggled off cannot silently revive a
-// stale encrypted blob (and vice versa).
+// stale encrypted blob.
 func marshalSecret(plaintext, key []byte) (plain string, encrypted []byte, err error) {
 	if key != nil {
 		encrypted, err = crypt.Encrypt(plaintext, key)

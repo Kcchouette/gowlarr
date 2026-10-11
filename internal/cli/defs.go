@@ -147,8 +147,8 @@ func newDefsShowCmd() *cobra.Command {
 			}
 			defer st.Close()
 
-			// Empty version selects the highest-priority cached version,
-			// matching the `defs show` CLI contract.
+			// The --version flag defaults to "v11"; an explicit empty
+			// --version= preserves the historical exact-version lookup.
 			raw, err := service.NewDefinitionService(st, cfg).Show(args[0], version)
 			if err != nil {
 				return err

@@ -134,11 +134,14 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 
 	// loadDefinition resolves the requested version (or the highest-priority
 	// fallback when version is empty) and parses it via the shared cache.
-	// buildIndexerProviderFromRaw keeps its raw-string contract because it is
-	// also fed by tests and by paths that already hold the YAML body.
 	def, err := loadDefinition(s.store, cfg.DefinitionID, version)
 	if err != nil {
 		return err
+	}
+	if len(def.Links) == 0 {
+		// Same guard as the batch/test provider builders: a malformed
+		// definition must fail with an error, not panic on def.Links[0].
+		return fmt.Errorf("definition %q has no links[]", cfg.DefinitionID)
 	}
 
 	client, err := newIndexerHTTPClient(s.store, s.cfg, cfg, clientOptions{

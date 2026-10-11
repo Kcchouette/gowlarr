@@ -133,3 +133,41 @@ func TestIndexerService_Test_Newznab_OK(t *testing.T) {
 		t.Fatalf("Test: %v", err)
 	}
 }
+
+// TestIndexerService_Test_DefinitionWithoutLinks is a regression test: a
+// malformed definition with no links[] must produce an error, not a panic
+// on def.Links[0] inside the provider builder.
+func TestIndexerService_Test_DefinitionWithoutLinks(t *testing.T) {
+	st := openTestStore(t)
+	const yaml = `id: nolinks
+name: NoLinks
+type: public
+search:
+  paths:
+    - path: search
+      response:
+        type: html
+`
+	if err := st.SaveDefinition("nolinks", "local", "", yaml); err != nil {
+		t.Fatalf("SaveDefinition: %v", err)
+	}
+	cfg := store.IndexerConfig{
+		ID:           "nolinks",
+		DefinitionID: "nolinks",
+		Protocol:     "torrent",
+		Enabled:      true,
+		Settings:     map[string]string{},
+	}
+	if err := st.SaveIndexerConfig(cfg, nil); err != nil {
+		t.Fatalf("SaveIndexerConfig: %v", err)
+	}
+
+	svc := NewIndexerService(st, testConfig())
+	err := svc.Test(context.Background(), "nolinks", "")
+	if err == nil {
+		t.Fatal("Test: expected an error for a definition without links[], got nil")
+	}
+	if !strings.Contains(err.Error(), "has no links[]") {
+		t.Fatalf("Test: error = %v, want mention of missing links[]", err)
+	}
+}

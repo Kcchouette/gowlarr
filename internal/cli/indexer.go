@@ -117,13 +117,9 @@ indexer (base URL + API key) instead.`,
 			// Load the definition with exactly the version the service will
 			// persist (best.Version), so the prompted settings match what
 			// the engine sees.
-			raw, err := st.GetDefinitionYAML(defID, best.Version)
+			def, err := service.NewDefinitionService(st, cfg).Load(defID, best.Version)
 			if err != nil {
 				return err
-			}
-			def, err := definition.Parse([]byte(raw))
-			if err != nil {
-				return fmt.Errorf("parsing definition %q: %w", defID, err)
 			}
 
 			missing := requiredSettings(def, settingsMap)

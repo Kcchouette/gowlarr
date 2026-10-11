@@ -40,8 +40,8 @@ func (s *Store) SaveCookies(indexerID string, cookieJSON string, key []byte) err
 	}
 
 	// The two column couples stay on separate upserts: the plaintext branch
-	// never touches cookie_enc (and vice versa), so a key toggled off cannot
-	// silently revive a stale encrypted blob.
+	// writes only cookie_json (leaving any stale cookie_enc untouched), so a
+	// key toggled off cannot silently revive a stale encrypted blob.
 	if key != nil {
 		_, err = s.db.Exec(`INSERT INTO cookies (indexer_id, cookie_json, cookie_enc, updated_at)
 			VALUES (?, ?, ?, ?)

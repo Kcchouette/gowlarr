@@ -46,8 +46,8 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 	}
 
 	// The two column couples stay on separate upserts: the plaintext branch
-	// never touches settings_enc (and vice versa), so a key toggled off cannot
-	// silently revive a stale encrypted blob.
+	// writes only settings_json (leaving any stale settings_enc untouched),
+	// so a key toggled off cannot silently revive a stale encrypted blob.
 	if key != nil {
 		_, err = s.db.Exec(`INSERT INTO indexer_configs
 			(id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url, created_at, updated_at)
