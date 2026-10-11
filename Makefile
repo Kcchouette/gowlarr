@@ -1,7 +1,5 @@
 .PHONY: build test lint fmt vet clean all ci coverage help
 
-GOLANGCI_LINT_VERSION := v1.64.5
-
 help: ## Afficher cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
 

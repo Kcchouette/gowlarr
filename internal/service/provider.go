@@ -140,8 +140,8 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 	return providers, nil
 }
 
-// BuildIndexerProvider builds a Cardigann provider for a specific indexer (testing).
-func BuildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
+// buildIndexerProvider builds a Cardigann provider for a specific indexer (testing).
+func buildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
 	// Native Newznab configs have no cached definition: build the native
 	// client before any definition lookup.
 	if cfg.DefinitionID == store.NewznabDefinitionID {

@@ -50,7 +50,7 @@ func BenchmarkSearch_RSS100(b *testing.B) {
 	}))
 	defer server.Close()
 
-	client := New("bench-usenet", "BenchUsenet", server.URL, "key")
+	client := NewWithOverrides("bench-usenet", "BenchUsenet", server.URL, "key", nil)
 	ctx := context.Background()
 	q := search.Query{Keywords: "some show"}
 

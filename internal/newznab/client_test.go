@@ -47,7 +47,7 @@ func TestClient_Search_ParsesRSSAndAttrs(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("test-usenet", "TestUsenet", server.URL, "mykey")
+	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "mykey", nil)
 	releases, err := client.Search(context.Background(), search.Query{Keywords: "some show"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -88,7 +88,7 @@ func TestClient_Search_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("test-usenet", "TestUsenet", server.URL, "badkey")
+	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "badkey", nil)
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x"})
 	if err == nil {
 		t.Fatal("expected error on HTTP 401")
@@ -104,7 +104,7 @@ func TestClient_Search_CategoriesInRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("test-usenet", "TestUsenet", server.URL, "key")
+	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "key", nil)
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x", Categories: []int{2000, 2010}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -121,7 +121,7 @@ func TestClient_Search_ErrorXML(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := New("test-usenet", "TestUsenet", server.URL, "badkey")
+	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "badkey", nil)
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x"})
 	if err == nil {
 		t.Fatal("expected error for <error> response")
@@ -212,7 +212,7 @@ func TestNewWithTransport_DNSOverrides(t *testing.T) {
 }
 
 func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
-	c := New("id", "name", "http://example.invalid", "key")
+	c := NewWithOverrides("id", "name", "http://example.invalid", "key", nil)
 	tr, ok := c.HTTPClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
@@ -252,43 +252,9 @@ func TestClient_Search_APIEndpoint(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := New("id", "name", server.URL+tc.baseURLSuffix, "key")
+			client := NewWithOverrides("id", "name", server.URL+tc.baseURLSuffix, "key", nil)
 			if _, err := client.Search(context.Background(), search.Query{Keywords: "x"}); err != nil {
 				t.Fatalf("Search: %v", err)
-			}
-		})
-	}
-}
-
-func TestClient_Caps_APIEndpoint(t *testing.T) {
-	cases := []struct {
-		name, baseURLSuffix, wantPath string
-	}{
-		{"bare origin", "", "/api"},
-		{"ends with /api", "/api", "/api"}, // no double /api
-		{"custom path", "/api/v1/newznab", "/api/v1/newznab"},
-		{"custom path trailing slash", "/api/v1/newznab/", "/api/v1/newznab"},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.URL.Path != tc.wantPath {
-					t.Errorf("request path = %q, want %q", r.URL.Path, tc.wantPath)
-				}
-				if r.URL.Query().Get("t") != "caps" {
-					t.Errorf("expected t=caps, got %q", r.URL.Query().Get("t"))
-				}
-				if r.URL.Query().Get("apikey") != "key" {
-					t.Errorf("expected apikey=key, got %q", r.URL.Query().Get("apikey"))
-				}
-				w.Header().Set("Content-Type", "application/xml")
-				w.Write([]byte(`<caps><searching><search available="yes"/></searching><categories/></caps>`))
-			}))
-			defer server.Close()
-
-			client := New("id", "name", server.URL+tc.baseURLSuffix, "key")
-			if _, err := client.Caps(context.Background()); err != nil {
-				t.Fatalf("Caps: %v", err)
 			}
 		})
 	}

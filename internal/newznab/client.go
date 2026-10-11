@@ -52,11 +52,6 @@ var sharedTransport = &http.Transport{
 	IdleConnTimeout:     90 * time.Second,
 }
 
-// New builds a generic Newznab client.
-func New(id, name, baseURL, apiKey string) *Client {
-	return newClient(id, name, baseURL, apiKey, transportWithOverrides(nil))
-}
-
 // NewWithOverrides builds a generic Newznab client, optionally forcing DNS
 // resolution of specific hostnames to fixed IPs (equivalent to curl's
 // --resolve). A nil or empty overrides map behaves exactly like New.
@@ -335,104 +330,4 @@ func parseRSSDate(raw string) time.Time {
 		}
 	}
 	return time.Time{}
-}
-
-// Caps represents the capabilities of a Newznab indexer.
-type Caps struct {
-	SearchTypes []string
-	Categories  []Category
-}
-
-type Category struct {
-	ID   int
-	Name string
-}
-
-// capsXML represents the XML response from /api?t=caps
-type capsXML struct {
-	XMLName   xml.Name `xml:"caps"`
-	Searching struct {
-		Search struct {
-			Available string `xml:"available,attr"`
-		} `xml:"search"`
-		TVSearch struct {
-			Available string `xml:"available,attr"`
-		} `xml:"tv-search"`
-		MovieSearch struct {
-			Available string `xml:"available,attr"`
-		} `xml:"movie-search"`
-		MusicSearch struct {
-			Available string `xml:"available,attr"`
-		} `xml:"music-search"`
-		BookSearch struct {
-			Available string `xml:"available,attr"`
-		} `xml:"book-search"`
-	} `xml:"searching"`
-	Categories struct {
-		Category []capsCategory `xml:"category"`
-	} `xml:"categories"`
-}
-
-type capsCategory struct {
-	ID     string `xml:"id,attr"`
-	Name   string `xml:"name,attr"`
-	Subcat []struct {
-		ID   string `xml:"id,attr"`
-		Name string `xml:"name,attr"`
-	} `xml:"subcat"`
-}
-
-// Caps queries the indexer for its capabilities.
-func (c *Client) Caps(ctx context.Context) (Caps, error) {
-	reqURL := fmt.Sprintf("%s?t=caps&apikey=%s", c.apiURL, url.QueryEscape(c.APIKey))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
-	if err != nil {
-		return Caps{}, fmt.Errorf("building caps request: %w", err)
-	}
-
-	resp, err := c.HTTPClient.Do(req)
-	if err != nil {
-		return Caps{}, fmt.Errorf("querying caps from %s: %w", c.IndexerID, err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return Caps{}, fmt.Errorf("caps from %s returned HTTP %d", c.IndexerID, resp.StatusCode)
-	}
-
-	var caps capsXML
-	if err := xml.NewDecoder(resp.Body).Decode(&caps); err != nil {
-		return Caps{}, fmt.Errorf("parsing caps from %s: %w", c.IndexerID, err)
-	}
-
-	result := Caps{}
-
-	// Determine available search types
-	if caps.Searching.Search.Available == "yes" {
-		result.SearchTypes = append(result.SearchTypes, SearchTypeSearch)
-	}
-	if caps.Searching.TVSearch.Available == "yes" {
-		result.SearchTypes = append(result.SearchTypes, SearchTypeTVSearch)
-	}
-	if caps.Searching.MovieSearch.Available == "yes" {
-		result.SearchTypes = append(result.SearchTypes, SearchTypeMovie)
-	}
-	if caps.Searching.MusicSearch.Available == "yes" {
-		result.SearchTypes = append(result.SearchTypes, SearchTypeMusic)
-	}
-	if caps.Searching.BookSearch.Available == "yes" {
-		result.SearchTypes = append(result.SearchTypes, SearchTypeBook)
-	}
-
-	// Parse categories
-	for _, cat := range caps.Categories.Category {
-		id, _ := strconv.Atoi(cat.ID)
-		result.Categories = append(result.Categories, Category{ID: id, Name: cat.Name})
-		for _, sub := range cat.Subcat {
-			subID, _ := strconv.Atoi(sub.ID)
-			result.Categories = append(result.Categories, Category{ID: subID, Name: sub.Name})
-		}
-	}
-
-	return result, nil
 }

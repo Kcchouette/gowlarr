@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	"github.com/Kcchouette/cardigann-go/httpclient"
 
 	"github.com/Kcchouette/gowlarr/internal/config"
@@ -112,7 +111,9 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		return defaultClient, nil
 	}
 
-	_ = cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)
+	// The cardigann provider is intentionally not constructed here: login is
+	// lazy, and the resolver only needs the HTTP client (with its shared
+	// cookie jar) plus the definition-derived auth headers below.
 
 	var authHeaders map[string]string
 	if def.Search.Headers != nil {

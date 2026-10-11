@@ -87,7 +87,7 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 func (s *Store) GetIndexerConfig(id string, key []byte) (IndexerConfig, error) {
 	row := s.db.QueryRow(`SELECT id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url
 		FROM indexer_configs WHERE id = ?`, id)
-	return scanIndexerConfig(row, key)
+	return doScanIndexerConfig(row, key)
 }
 
 // ListIndexerConfigs lists all configurations, or only enabled ones
@@ -107,7 +107,7 @@ func (s *Store) ListIndexerConfigs(onlyEnabled bool, key []byte) ([]IndexerConfi
 
 	var configs []IndexerConfig
 	for rows.Next() {
-		cfg, err := scanIndexerConfigRows(rows, key)
+		cfg, err := doScanIndexerConfig(rows, key)
 		if err != nil {
 			return nil, err
 		}
@@ -151,14 +151,6 @@ func (s *Store) SetIndexerEnabled(id string, enabled bool) error {
 
 type scanner interface {
 	Scan(dest ...any) error
-}
-
-func scanIndexerConfig(row *sql.Row, key []byte) (IndexerConfig, error) {
-	return doScanIndexerConfig(row, key)
-}
-
-func scanIndexerConfigRows(rows *sql.Rows, key []byte) (IndexerConfig, error) {
-	return doScanIndexerConfig(rows, key)
 }
 
 func doScanIndexerConfig(s scanner, key []byte) (IndexerConfig, error) {

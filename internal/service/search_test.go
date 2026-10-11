@@ -43,15 +43,15 @@ func (p *plainProvider) Search(context.Context, search.Query) ([]model.ReleaseIn
 }
 
 func TestSearch_NoDefaultIndexers(t *testing.T) {
-	// With no configured indexers, a search must return nothing: the old
-	// behavior seeded the built-in apibay provider unconditionally.
+	// With no configured indexers, a search must return nothing: there is no
+	// longer a built-in default provider seeded unconditionally.
 	svc := NewSearchService(openTestStore(t), testConfig())
 	result, err := svc.Search(context.Background(), SearchParams{Keywords: "hunter"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
 	if len(result.Releases) != 0 {
-		t.Errorf("expected 0 releases without configured indexers (no default apibay), got %d", len(result.Releases))
+		t.Errorf("expected 0 releases without configured indexers (no default provider), got %d", len(result.Releases))
 	}
 	if len(result.Errors) != 0 {
 		t.Errorf("expected 0 provider errors, got %v", result.Errors)

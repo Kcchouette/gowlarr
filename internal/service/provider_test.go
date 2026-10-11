@@ -105,9 +105,9 @@ func TestBuildIndexerProvider_Newznab(t *testing.T) {
 
 	// The definition lookup must be short-circuited: the store has no
 	// definitions at all, yet the native provider builds fine.
-	provider, err := BuildIndexerProvider(st, testConfig(), cfg)
+	provider, err := buildIndexerProvider(st, testConfig(), cfg)
 	if err != nil {
-		t.Fatalf("BuildIndexerProvider: %v", err)
+		t.Fatalf("buildIndexerProvider: %v", err)
 	}
 	if provider.ID() != "nzb" {
 		t.Errorf("provider ID = %q, want nzb", provider.ID())
