@@ -1,6 +1,6 @@
-# Binaires
-# Ancré à la racine : `gowlarr` non-anché matchait aussi le dossier source
-# cmd/gowlarr/ (même nom que le binaire), le laissant hors de git.
+# Binaries
+# Anchored at the root: an unanchored `gowlarr` also matched the source
+# directory cmd/gowlarr/ (same name as the binary), leaving it out of git.
 /gowlarr
 gowlarr.exe
 *.exe
@@ -62,5 +62,5 @@ vendor/
 .DS_Store
 Thumbs.db
 
-# Definitions locales (autre dépôt)
+# Local definitions (separate repo)
 definitions-local/

@@ -1,4 +1,4 @@
-// Command gowlarr est le point d'entrée CLI de Gowlarr.
+// Command gowlarr is Gowlarr's CLI entry point.
 package main
 
 import "github.com/Kcchouette/gowlarr/internal/cli"
