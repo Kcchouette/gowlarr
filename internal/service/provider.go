@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/Kcchouette/cardigann-go/definition"
 	cardigannengine "github.com/Kcchouette/cardigann-go/engine"
 	"github.com/Kcchouette/cardigann-go/httpclient"
 
@@ -58,6 +59,63 @@ func newznabProviderFromConfig(cfg store.IndexerConfig, appCfg config.Config) (s
 	return newznab.NewWithTransport(cfg.ID, cfg.ID, baseURL, apiKey, effectiveProxyURL(cfg.ProxyURL, appCfg), appCfg.DNSOverrides)
 }
 
+// clientOptions captures the transport-level differences between the code
+// paths that build an indexer HTTP client. Each historical call site keeps
+// exactly the behavior it always had — these knobs are NOT harmonized, because
+// doing so would silently change observable behavior on paths the tests pin.
+type clientOptions struct {
+	// flareClient, when non-nil, wraps the transport with a FlareSolverr
+	// transport to bypass Cloudflare challenges.
+	flareClient *flaresolverr.Client
+	// applyDNS forces DNS resolution of overridden hostnames to fixed IPs.
+	applyDNS bool
+	// maskUserAgent swaps the default Go User-Agent for a browser one, which
+	// some WAF-protected sites require to avoid a 503.
+	maskUserAgent bool
+}
+
+// newIndexerHTTPClient builds the HTTP client shared by every Cardigann code
+// path: cookie persistence, effective proxy, then the optional DNS override,
+// UA mask and FlareSolverr wrapper applied in that exact order.
+func newIndexerHTTPClient(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, opts clientOptions) (*httpclient.IndexerClient, error) {
+	client, err := httpclient.New(httpclient.Options{
+		IndexerID: cfg.ID,
+		Persister: store.NewCookiePersisterAdapter(st, nil),
+		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, appCfg),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("building http client: %w", err)
+	}
+
+	// DNS overrides must be applied before the FlareSolverr transport wraps
+	// the underlying transport (see applyDNSOverrides).
+	if opts.applyDNS {
+		applyDNSOverrides(client, appCfg.DNSOverrides)
+	}
+
+	if opts.maskUserAgent {
+		client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
+	}
+
+	if opts.flareClient != nil {
+		client.HTTPClient().Transport = &flaresolverr.FlareSolverrTransport{
+			Base:        client.HTTPClient().Transport,
+			FlareClient: opts.flareClient,
+		}
+	}
+	return client, nil
+}
+
+// buildCardigannProvider wraps a parsed definition and a client into a
+// Cardigann search.Provider. Download chains (e.g. a "thanks" POST unlocking
+// hidden DDL links) are skipped: they resolve only when the user explicitly
+// requests the links (--links / download).
+func buildCardigannProvider(cfg store.IndexerConfig, def definition.IndexerDefinition, client *httpclient.IndexerClient) search.Provider {
+	inner := cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)
+	inner.SkipSearchDownload()
+	return cardigannadapter.NewProvider(inner)
+}
+
 // BuildConfiguredProviders builds a Cardigann search.Provider for each
 // enabled indexer, with authenticated session if the definition requires it.
 // If cfg.FlareSolverrURL is set, the FlareSolverr transport is used to
@@ -88,14 +146,9 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			continue
 		}
 
-		raw, _, err := st.GetDefinitionYAMLFallback(idxCfg.DefinitionID)
+		def, err := loadDefinition(st, idxCfg.DefinitionID, "")
 		if err != nil {
-			slog.Warn("indexer: definition not found", "id", idxCfg.ID, "err", err)
-			continue
-		}
-		def, err := parseDefinition(raw)
-		if err != nil {
-			slog.Warn("indexer: parsing definition", "id", idxCfg.ID, "err", err)
+			slog.Warn("indexer: loading definition", "id", idxCfg.ID, "err", err)
 			continue
 		}
 		if len(def.Links) == 0 {
@@ -103,86 +156,43 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 			continue
 		}
 
-		client, err := httpclient.New(httpclient.Options{
-			IndexerID: idxCfg.ID,
-			Persister: store.NewCookiePersisterAdapter(st, nil),
-			ProxyURL:  effectiveProxyURL(idxCfg.ProxyURL, cfg),
+		client, err := newIndexerHTTPClient(st, cfg, idxCfg, clientOptions{
+			flareClient:   flareClient,
+			applyDNS:      true,
+			maskUserAgent: true,
 		})
 		if err != nil {
 			slog.Warn("indexer: building http client", "id", idxCfg.ID, "err", err)
 			continue
 		}
 
-		// Force DNS resolution of overridden hostnames before the
-		// FlareSolverr transport wraps the underlying transport.
-		applyDNSOverrides(client, cfg.DNSOverrides)
-
-		// Mask as a regular browser: some WAF-protected sites reject Go's
-		// default User-Agent with a 503.
-		client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
-
-		// Inject FlareSolverr transport if configured
-		if flareClient != nil {
-			transport := &flaresolverr.FlareSolverrTransport{
-				Base:        client.HTTPClient().Transport,
-				FlareClient: flareClient,
-			}
-			client.HTTPClient().Transport = transport
-		}
-
-		// Download chains (e.g. a "thanks" POST that unlocks hidden DDL
-		// links) must not run during search: they resolve only when the user
-		// explicitly requests the links (--links / download).
-		inner := cardigannengine.NewAuthenticatedProvider(def, def.Links[0], idxCfg.Settings, client)
-		inner.SkipSearchDownload()
-		providers = append(providers, cardigannadapter.NewProvider(inner))
+		providers = append(providers, buildCardigannProvider(idxCfg, def, client))
 	}
 	return providers, nil
 }
 
-// buildIndexerProvider builds a Cardigann provider for a specific indexer (testing).
+// buildIndexerProvider builds a Cardigann provider for a specific indexer
+// (testing). It returns errors instead of skipping, because the caller is an
+// explicit single-indexer action where a failure must surface to the user.
 func buildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.IndexerConfig) (search.Provider, error) {
 	// Native Newznab configs have no cached definition: build the native
 	// client before any definition lookup.
 	if cfg.DefinitionID == store.NewznabDefinitionID {
 		return newznabProviderFromConfig(cfg, appCfg)
 	}
-	raw, _, err := st.GetDefinitionYAMLFallback(cfg.DefinitionID)
+	def, err := loadDefinition(st, cfg.DefinitionID, "")
 	if err != nil {
-		return nil, fmt.Errorf("loading definition: %w", err)
-	}
-	return buildIndexerProviderFromRaw(st, appCfg, cfg, raw)
-}
-
-func buildIndexerProviderFromRaw(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, raw string) (search.Provider, error) {
-	// Defensive: any caller of this raw variant is also protected against a
-	// native config (raw is ignored for the sentinel).
-	if cfg.DefinitionID == store.NewznabDefinitionID {
-		return newznabProviderFromConfig(cfg, appCfg)
-	}
-	def, err := parseDefinition(raw)
-	if err != nil {
-		return nil, fmt.Errorf("parsing definition: %w", err)
+		return nil, err
 	}
 	if len(def.Links) == 0 {
 		return nil, fmt.Errorf("definition %q has no links[]", cfg.DefinitionID)
 	}
-
-	client, err := httpclient.New(httpclient.Options{
-		IndexerID: cfg.ID,
-		Persister: store.NewCookiePersisterAdapter(st, nil),
-		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, appCfg),
+	client, err := newIndexerHTTPClient(st, appCfg, cfg, clientOptions{
+		applyDNS:      true,
+		maskUserAgent: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("building http client: %w", err)
+		return nil, err
 	}
-
-	applyDNSOverrides(client, appCfg.DNSOverrides)
-
-	// Mask as a regular browser (same rationale as BuildConfiguredProviders).
-	client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
-
-	inner := cardigannengine.NewAuthenticatedProvider(def, def.Links[0], cfg.Settings, client)
-	inner.SkipSearchDownload()
-	return cardigannadapter.NewProvider(inner), nil
+	return buildCardigannProvider(cfg, def, client), nil
 }

@@ -11,7 +11,7 @@ import (
 	"github.com/Kcchouette/cardigann-go/definition"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
-	"github.com/Kcchouette/gowlarr/internal/search"
+	"github.com/Kcchouette/gowlarr/internal/service"
 	"github.com/Kcchouette/gowlarr/internal/store"
 )
 
@@ -40,7 +40,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 		return
 	}
 
-	query := search.Query{
+	// Build the transport-agnostic params, then convert once via the service
+	// mapping so the HTTP and CLI entry paths share a single Query contract.
+	params := service.SearchParams{
 		Keywords:   keywords,
 		SearchType: t,
 	}
@@ -51,7 +53,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 				// Intentionally permissive with *arr clients: invalid
 				// categories are silently ignored instead of failing
 				// the entire request.
-				query.Categories = append(query.Categories, id)
+				params.Categories = append(params.Categories, id)
 			}
 		}
 	}
@@ -60,22 +62,22 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request, t string) 
 		if season, err := strconv.Atoi(seasonStr); err == nil {
 			// Same permissive compatibility for season/ep: unparseable
 			// values are silently ignored instead of returning 400.
-			query.Season = season
+			params.Season = season
 		}
 	}
 	if epStr := q.Get("ep"); epStr != "" {
 		if ep, err := strconv.Atoi(epStr); err == nil {
-			query.Episode = ep
+			params.Episode = ep
 		}
 	}
 	if imdbid := q.Get("imdbid"); imdbid != "" {
-		query.IMDbID = imdbid
+		params.IMDbID = imdbid
 	}
 	if tmdbid := q.Get("tmdbid"); tmdbid != "" {
-		query.TMDBID = tmdbid
+		params.TMDBID = tmdbid
 	}
 
-	result := s.engine.Search(r.Context(), query)
+	result := s.engine.Search(r.Context(), service.QueryFromParams(params))
 
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>`)

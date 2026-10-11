@@ -46,27 +46,40 @@ func printResults(results []model.ReleaseInfo, jsonOutput, linksOutput bool) {
 	printStyledTable(results, linksOutput)
 }
 
-func printStyledTable(results []model.ReleaseInfo, linksOutput bool) {
+// resultsHeaders returns the column headers shared by the styled and plain
+// result tables, with the trailing LINK column present only for `--links`.
+func resultsHeaders(linksOutput bool) []string {
 	headers := []string{"ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE", "HOSTS"}
 	if linksOutput {
 		headers = append(headers, "LINK")
 	}
+	return headers
+}
+
+// resultCells returns the display values for one release, in the column order
+// shared by the styled and plain result tables.
+func resultCells(r model.ReleaseInfo, linksOutput bool) []string {
+	cells := []string{
+		fmt.Sprintf("%d", r.ID),
+		shortAge(r.PublishDate),
+		string(r.Protocol),
+		fmt.Sprintf("%d", r.Seeders),
+		humanSize(r.Size),
+		r.IndexerName,
+		r.Title,
+		strings.Join(r.Hosts, ","),
+	}
+	if linksOutput {
+		cells = append(cells, displayLink(r))
+	}
+	return cells
+}
+
+func printStyledTable(results []model.ReleaseInfo, linksOutput bool) {
+	headers := resultsHeaders(linksOutput)
 	rows := make([][]string, 0, len(results))
 	for _, r := range results {
-		row := []string{
-			fmt.Sprintf("%d", r.ID),
-			shortAge(r.PublishDate),
-			string(r.Protocol),
-			fmt.Sprintf("%d", r.Seeders),
-			humanSize(r.Size),
-			r.IndexerName,
-			r.Title,
-			strings.Join(r.Hosts, ","),
-		}
-		if linksOutput {
-			row = append(row, displayLink(r))
-		}
-		rows = append(rows, row)
+		rows = append(rows, resultCells(r, linksOutput))
 	}
 
 	t := table.New().
@@ -100,12 +113,13 @@ func printPlainTable(results []model.ReleaseInfo, linksOutput bool) {
 		fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %-30s %s\n", "ID", "AGE", "PROTO", "SEEDS", "SIZE", "INDEXER", "TITLE", "HOSTS")
 	}
 	for _, r := range results {
+		cells := resultCells(r, linksOutput)
 		if linksOutput {
-			fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %-30s %-12s %s\n",
-				r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title, strings.Join(r.Hosts, ","), displayLink(r))
+			fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %-30s %-12s %s\n",
+				cells[0], cells[1], cells[2], cells[3], cells[4], cells[5], cells[6], cells[7], cells[8])
 		} else {
-			fmt.Printf("%-4d %-6s %-8s %-8d %-6s %-10s %-30s %s\n",
-				r.ID, shortAge(r.PublishDate), r.Protocol, r.Seeders, humanSize(r.Size), r.IndexerName, r.Title, strings.Join(r.Hosts, ","))
+			fmt.Printf("%-4s %-6s %-8s %-8s %-6s %-10s %-30s %s\n",
+				cells[0], cells[1], cells[2], cells[3], cells[4], cells[5], cells[6], cells[7])
 		}
 	}
 	fmt.Printf("\n%d result(s). Use `gowlarr download <ID>` to retrieve a file (DDL/streaming: use `--links`).\n", len(results))

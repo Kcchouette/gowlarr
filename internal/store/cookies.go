@@ -4,8 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"time"
-
-	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
 // LoadCookies implements httpclient.CookiePersister: returns "" if no
@@ -23,15 +21,11 @@ func (s *Store) LoadCookies(indexerID string, key []byte) (string, error) {
 		return "", fmt.Errorf("loading cookies for %s: %w", indexerID, err)
 	}
 
-	// Try encrypted first
-	if key != nil && len(cookieEnc) > 0 {
-		decrypted, err := crypt.Decrypt(cookieEnc, key)
-		if err != nil {
-			return "", fmt.Errorf("decrypting cookies for %s: %w", indexerID, err)
-		}
-		return string(decrypted), nil
+	cookies, err := unmarshalSecret(cookieJSON, cookieEnc, key)
+	if err != nil {
+		return "", fmt.Errorf("loading cookies for %s: %w", indexerID, err)
 	}
-	return cookieJSON, nil
+	return string(cookies), nil
 }
 
 // SaveCookies implements httpclient.CookiePersister: upserts current
@@ -40,28 +34,28 @@ func (s *Store) LoadCookies(indexerID string, key []byte) (string, error) {
 // Otherwise, stores in cookie_json (TEXT) for backward compatibility.
 func (s *Store) SaveCookies(indexerID string, cookieJSON string, key []byte) error {
 	now := time.Now().UTC().Format(time.RFC3339)
+	plain, encrypted, err := marshalSecret([]byte(cookieJSON), key)
+	if err != nil {
+		return fmt.Errorf("saving cookies for %s: %w", indexerID, err)
+	}
 
+	// The two column couples stay on separate upserts: the plaintext branch
+	// never touches cookie_enc (and vice versa), so a key toggled off cannot
+	// silently revive a stale encrypted blob.
 	if key != nil {
-		encrypted, err := crypt.Encrypt([]byte(cookieJSON), key)
-		if err != nil {
-			return fmt.Errorf("encrypting cookies for %s: %w", indexerID, err)
-		}
 		_, err = s.db.Exec(`INSERT INTO cookies (indexer_id, cookie_json, cookie_enc, updated_at)
 			VALUES (?, ?, ?, ?)
 			ON CONFLICT(indexer_id) DO UPDATE SET cookie_json = excluded.cookie_json,
 				cookie_enc = excluded.cookie_enc, updated_at = excluded.updated_at`,
-			indexerID, "", encrypted, now)
-		if err != nil {
-			return fmt.Errorf("saving cookies for %s: %w", indexerID, err)
-		}
+			indexerID, plain, encrypted, now)
 	} else {
-		_, err := s.db.Exec(`INSERT INTO cookies (indexer_id, cookie_json, updated_at)
+		_, err = s.db.Exec(`INSERT INTO cookies (indexer_id, cookie_json, updated_at)
 			VALUES (?, ?, ?)
 			ON CONFLICT(indexer_id) DO UPDATE SET cookie_json = excluded.cookie_json, updated_at = excluded.updated_at`,
-			indexerID, cookieJSON, now)
-		if err != nil {
-			return fmt.Errorf("saving cookies for %s: %w", indexerID, err)
-		}
+			indexerID, plain, now)
+	}
+	if err != nil {
+		return fmt.Errorf("saving cookies for %s: %w", indexerID, err)
 	}
 	return nil
 }

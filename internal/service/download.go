@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Kcchouette/cardigann-go/httpclient"
+	"github.com/Kcchouette/cardigann-go/definition"
 
 	"github.com/Kcchouette/gowlarr/internal/config"
 	"github.com/Kcchouette/gowlarr/internal/download"
@@ -82,18 +82,11 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		return client.HTTPClient, nil
 	}
 
-	raw, _, err := s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
+	def, err := loadDefinition(s.store, cfg.DefinitionID, "")
 	if err != nil {
 		slog.Warn("download: loading indexer definition, falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
 		return defaultClient, nil
 	}
-
-	def, err := parseDefinition(raw)
-	if err != nil {
-		slog.Warn("download: parsing indexer definition, falling back to default client", "indexer_id", indexerID, "definition_id", cfg.DefinitionID, "err", err)
-		return defaultClient, nil
-	}
-
 	if len(def.Links) == 0 {
 		// Malformed/incomplete Cardigann definition: no base link
 		// available, cannot build an authenticated provider.
@@ -101,33 +94,37 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		return defaultClient, nil
 	}
 
-	client, err := httpclient.New(httpclient.Options{
-		IndexerID: cfg.ID,
-		Persister: store.NewCookiePersisterAdapter(s.store, nil),
-		ProxyURL:  effectiveProxyURL(cfg.ProxyURL, s.cfg),
-	})
+	// Unlike the search/test paths, download does NOT apply DNS overrides or
+	// the browser UA mask, and does not wrap FlareSolverr — this call-site
+	// behavior is preserved deliberately (see clientOptions). Login stays
+	// lazy in the cardigann engine, so no provider is constructed here: the
+	// resolver only needs the HTTP client (with its shared cookie jar) plus
+	// the definition-derived auth headers below.
+	client, err := newIndexerHTTPClient(s.store, s.cfg, cfg, clientOptions{})
 	if err != nil {
 		slog.Warn("download: building indexer HTTP client, falling back to default client", "indexer_id", indexerID, "err", err)
 		return defaultClient, nil
 	}
 
-	// The cardigann provider is intentionally not constructed here: login is
-	// lazy, and the resolver only needs the HTTP client (with its shared
-	// cookie jar) plus the definition-derived auth headers below.
+	return client, authHeadersFromDef(def, cfg.Settings)
+}
 
-	var authHeaders map[string]string
-	if def.Search.Headers != nil {
-		authHeaders = make(map[string]string)
-		for header, vals := range def.Search.Headers {
-			if len(vals) > 0 {
-				tmplStr := vals[0]
-				for k, v := range cfg.Settings {
-					tmplStr = strings.ReplaceAll(tmplStr, "{{ .Config."+k+" }}", v)
-				}
-				authHeaders[header] = tmplStr
+// authHeadersFromDef renders the definition's search request headers,
+// substituting each {{ .Config.<key> }} placeholder with the indexer's
+// configured setting value.
+func authHeadersFromDef(def definition.IndexerDefinition, settings map[string]string) map[string]string {
+	if def.Search.Headers == nil {
+		return nil
+	}
+	authHeaders := make(map[string]string)
+	for header, vals := range def.Search.Headers {
+		if len(vals) > 0 {
+			tmplStr := vals[0]
+			for k, v := range settings {
+				tmplStr = strings.ReplaceAll(tmplStr, "{{ .Config."+k+" }}", v)
 			}
+			authHeaders[header] = tmplStr
 		}
 	}
-
-	return client, authHeaders
+	return authHeaders
 }

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
-
-	"github.com/Kcchouette/gowlarr/internal/crypt"
 )
 
 // NewznabDefinitionID is the reserved DefinitionID of native Newznab
@@ -42,12 +40,15 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 		return fmt.Errorf("marshaling settings: %w", err)
 	}
 	now := time.Now().UTC().Format(time.RFC3339)
+	plain, encrypted, err := marshalSecret(settingsJSON, key)
+	if err != nil {
+		return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
+	}
 
+	// The two column couples stay on separate upserts: the plaintext branch
+	// never touches settings_enc (and vice versa), so a key toggled off cannot
+	// silently revive a stale encrypted blob.
 	if key != nil {
-		encrypted, err := crypt.Encrypt(settingsJSON, key)
-		if err != nil {
-			return fmt.Errorf("encrypting settings: %w", err)
-		}
 		_, err = s.db.Exec(`INSERT INTO indexer_configs
 			(id, definition_id, protocol, enabled, settings_json, settings_enc, proxy_url, created_at, updated_at)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -56,11 +57,8 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 				settings_json = excluded.settings_json, settings_enc = excluded.settings_enc,
 				proxy_url = excluded.proxy_url, updated_at = excluded.updated_at`,
 			cfg.ID, cfg.DefinitionID, cfg.Protocol, boolToInt(cfg.Enabled),
-			"", encrypted, nullableString(cfg.ProxyURL), now, now,
+			plain, encrypted, nullableString(cfg.ProxyURL), now, now,
 		)
-		if err != nil {
-			return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
-		}
 	} else {
 		_, err = s.db.Exec(`INSERT INTO indexer_configs
 			(id, definition_id, protocol, enabled, settings_json, proxy_url, created_at, updated_at)
@@ -70,11 +68,11 @@ func (s *Store) SaveIndexerConfig(cfg IndexerConfig, key []byte) error {
 				settings_json = excluded.settings_json, proxy_url = excluded.proxy_url,
 				updated_at = excluded.updated_at`,
 			cfg.ID, cfg.DefinitionID, cfg.Protocol, boolToInt(cfg.Enabled),
-			string(settingsJSON), nullableString(cfg.ProxyURL), now, now,
+			plain, nullableString(cfg.ProxyURL), now, now,
 		)
-		if err != nil {
-			return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
-		}
+	}
+	if err != nil {
+		return fmt.Errorf("saving indexer config %s: %w", cfg.ID, err)
 	}
 	return nil
 }
@@ -169,18 +167,12 @@ func doScanIndexerConfig(s scanner, key []byte) (IndexerConfig, error) {
 	cfg.Enabled = enabled != 0
 	cfg.ProxyURL = proxyURL.String
 	cfg.Settings = make(map[string]string)
-
-	// Try encrypted settings first (if key provided and data exists)
-	if key != nil && len(settingsEnc) > 0 {
-		decrypted, err := crypt.Decrypt(settingsEnc, key)
-		if err != nil {
-			return IndexerConfig{}, fmt.Errorf("decrypting settings: %w", err)
-		}
+	decrypted, err := unmarshalSecret(settingsJSON, settingsEnc, key)
+	if err != nil {
+		return IndexerConfig{}, fmt.Errorf("loading settings for %s: %w", cfg.ID, err)
+	}
+	if len(decrypted) > 0 {
 		if err := json.Unmarshal(decrypted, &cfg.Settings); err != nil {
-			return IndexerConfig{}, fmt.Errorf("unmarshaling decrypted settings: %w", err)
-		}
-	} else if settingsJSON != "" {
-		if err := json.Unmarshal([]byte(settingsJSON), &cfg.Settings); err != nil {
 			return IndexerConfig{}, fmt.Errorf("unmarshaling settings: %w", err)
 		}
 	}

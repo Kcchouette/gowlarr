@@ -32,21 +32,9 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 		instanceID = defID
 	}
 
-	var raw string
-	var err error
-	if version == "" {
-		// No version requested: resolve the highest-priority version
-		// ("local" first, then v11-v1).
-		raw, _, err = s.store.GetDefinitionYAMLFallback(defID)
-	} else {
-		raw, err = s.store.GetDefinitionYAML(defID, version)
-	}
+	def, err := loadDefinition(s.store, defID, version)
 	if err != nil {
 		return err
-	}
-	def, err := parseDefinition(raw)
-	if err != nil {
-		return fmt.Errorf("parsing definition: %w", err)
 	}
 
 	protocol := "torrent"
@@ -149,20 +137,24 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 		return nil
 	}
 
-	var raw string
-	if version != "" {
-		raw, err = s.store.GetDefinitionYAML(cfg.DefinitionID, version)
-	} else {
-		raw, _, err = s.store.GetDefinitionYAMLFallback(cfg.DefinitionID)
-	}
-	if err != nil {
-		return fmt.Errorf("loading definition: %w", err)
-	}
-
-	provider, err := buildIndexerProviderFromRaw(s.store, s.cfg, cfg, raw)
+	// loadDefinition resolves the requested version (or the highest-priority
+	// fallback when version is empty) and parses it via the shared cache.
+	// buildIndexerProviderFromRaw keeps its raw-string contract because it is
+	// also fed by tests and by paths that already hold the YAML body.
+	def, err := loadDefinition(s.store, cfg.DefinitionID, version)
 	if err != nil {
 		return err
 	}
+
+	client, err := newIndexerHTTPClient(s.store, s.cfg, cfg, clientOptions{
+		applyDNS:      true,
+		maskUserAgent: true,
+	})
+	if err != nil {
+		return err
+	}
+
+	provider := buildCardigannProvider(cfg, def, client)
 
 	_, err = provider.Search(ctx, search.Query{Keywords: "test"})
 	if err != nil {

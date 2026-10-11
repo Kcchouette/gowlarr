@@ -33,6 +33,21 @@ type SearchParams struct {
 	ResolveLinks bool
 }
 
+// QueryFromParams maps the transport-agnostic search parameters onto the
+// engine's query type. It is the single conversion point between the two, so
+// every entry path (CLI flags, HTTP handler) shares one mapping.
+func QueryFromParams(p SearchParams) search.Query {
+	return search.Query{
+		Keywords:   p.Keywords,
+		Categories: p.Categories,
+		SearchType: p.SearchType,
+		Season:     p.Season,
+		Episode:    p.Episode,
+		IMDbID:     p.IMDbID,
+		TMDBID:     p.TMDBID,
+	}
+}
+
 // SearchResult contains the results of a search.
 type SearchResult struct {
 	Releases []model.ReleaseInfo
@@ -83,15 +98,7 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 
 	engine := search.NewEngine(providers)
 	engine.MaxResultsPerProvider = s.cfg.MaxResultsPerIndexer // 0 -> default (10) inside Search
-	result := engine.Search(ctx, search.Query{
-		Keywords:   params.Keywords,
-		Categories: params.Categories,
-		SearchType: params.SearchType,
-		Season:     params.Season,
-		Episode:    params.Episode,
-		IMDbID:     params.IMDbID,
-		TMDBID:     params.TMDBID,
-	})
+	result := engine.Search(ctx, QueryFromParams(params))
 
 	releases := result.Releases
 	if params.ResolveLinks {
