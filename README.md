@@ -20,7 +20,7 @@ which remains the property of its respective authors.
 ## Installation
 
 ```bash
-# From source (Go 1.25+ required)
+# From source (Go 1.27+ required)
 go install github.com/Kcchouette/gowlarr/cmd/gowlarr@latest
 
 # Or from a cloned repo
@@ -137,9 +137,39 @@ internal/cardigannadapter/  Adapter for cardigann-go
 
 ## Dependencies
 
-- [cardigann-go](https://github.com/Kcchouette/cardigann-go) — Cardigann engine (LGPL-3.0)
+- [cardigann-go](https://github.com/Kcchouette/cardigann-go) — Cardigann engine (LGPL-3.0), pinned to a published tag (v0.5.0)
 - [cobra](https://github.com/spf13/cobra) — CLI framework
 - [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — Pure Go SQLite (no cgo)
+
+## Development
+
+The `go.mod` pins `cardigann-go` to a published tag; there is **no `replace`
+directive** (so `go install ...@latest` and CI build anywhere). To co-develop
+gowlarr against a local checkout of cardigann-go, create a gitignored
+`go.work` next to both checkouts (sibling layout):
+
+```bash
+# ../cardigann-go/  and  ../gowlarr/
+cat > ../go.work <<'EOF'
+go 1.27.0
+
+use (
+	./cardigann-go
+	./gowlarr
+)
+EOF
+```
+
+`go.work` and `go.work.sum` are already gitignored. When regenerating
+`go.mod`/`go.sum`, disable the workspace so the committed files stay
+canonical:
+
+```bash
+GOWORK=off go mod tidy
+```
+
+Note: `go mod verify` checks modules downloaded from the proxy/checksum
+database; the contents of a local `go.work` checkout are not verified.
 
 ## Security
 
