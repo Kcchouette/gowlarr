@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # gomod is intentionally not enabled: dependency bumps are done manually
+  # (user arbitration). The cardigann-go module is pinned to a published tag.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
