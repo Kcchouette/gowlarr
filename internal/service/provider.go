@@ -1,5 +1,21 @@
 // Package service implements the business logic layer of Gowlarr, separating
 // orchestration logic from CLI commands and HTTP server handlers.
+//
+// # Error policy
+//
+// Aggregated/batch operations degrade: a failure affecting one indexer among
+// many is logged with a warning and skipped, so a single broken indexer never
+// takes down a multi-indexer search (see BuildConfiguredProviders).
+//
+// Targeted/explicit operations fail loudly: an action the user addressed to a
+// single indexer returns its error so it can be surfaced (see
+// buildIndexerProvider, IndexerService.Test).
+//
+// One documented exception: DownloadService.buildClient warns and falls back
+// to a default HTTP client. The user asked for one specific download, so a
+// silent fallback (no proxy, no DNS overrides, no cookies) degrades the
+// download but is preserved for behavior compatibility; it is a candidate for
+// a future fail-loud decision.
 package service
 
 import (

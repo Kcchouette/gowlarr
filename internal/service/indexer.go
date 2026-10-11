@@ -125,14 +125,9 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 		}
 		_, err = provider.Search(ctx, search.Query{Keywords: "test"})
 		if err != nil {
-			// The client emits "returned HTTP 401" (uppercase) and, after the
-			// <error> parsing, "Invalid API Key (code 100)": match on the
-			// lowercased message.
-			lower := strings.ToLower(err.Error())
-			if strings.Contains(lower, "http 401") || strings.Contains(lower, "http 403") || strings.Contains(lower, "invalid api") {
-				return fmt.Errorf("authentication failed: %w", err)
-			}
-			return fmt.Errorf("network/parsing error: %w", err)
+			// The newznab client emits "returned HTTP 401" (uppercase) and,
+			// after the <error> parsing, "Invalid API Key (code 100)".
+			return classifySearchError(err, "http 401", "http 403", "invalid api")
 		}
 		return nil
 	}
@@ -158,10 +153,7 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 
 	_, err = provider.Search(ctx, search.Query{Keywords: "test"})
 	if err != nil {
-		if strings.Contains(err.Error(), "login:") {
-			return fmt.Errorf("authentication failed: %w", err)
-		}
-		return fmt.Errorf("network/parsing error: %w", err)
+		return classifySearchError(err, "login:")
 	}
 	return nil
 }
