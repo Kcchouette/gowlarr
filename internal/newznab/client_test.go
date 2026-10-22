@@ -82,6 +82,46 @@ func TestClient_Search_ParsesRSSAndAttrs(t *testing.T) {
 	}
 }
 
+// TestClient_Search_PrefersEnclosure pins the download-link precedence:
+// the Newznab enclosure is the downloadable asset, while <link> may be a
+// details page (feeds of some anime mirrors put their view page there).
+func TestClient_Search_PrefersEnclosure(t *testing.T) {
+	const body = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+  <item>
+    <title>Example.Show.S01E01.1080p</title>
+    <link>https://example.invalid/view/1</link>
+    <enclosure url="https://example.invalid/nzb/1" type="application/x-nzb" length="12345" />
+    <guid>https://example.invalid/view/1</guid>
+  </item>
+  <item>
+    <title>Example.Show.S01E02.1080p</title>
+    <link>https://example.invalid/getnzb/2.nzb</link>
+    <guid>https://example.invalid/details/2</guid>
+  </item>
+</channel></rss>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(body))
+	}))
+	defer server.Close()
+
+	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "key", nil)
+	releases, err := client.Search(context.Background(), search.Query{Keywords: "example"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if len(releases) != 2 {
+		t.Fatalf("expected 2 releases, got %d", len(releases))
+	}
+	if releases[0].DownloadLink != "https://example.invalid/nzb/1" {
+		t.Errorf("enclosure not preferred: %q", releases[0].DownloadLink)
+	}
+	if releases[1].DownloadLink != "https://example.invalid/getnzb/2.nzb" {
+		t.Errorf("expected link fallback without enclosure, got %q", releases[1].DownloadLink)
+	}
+}
+
 func TestClient_Search_HTTPError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

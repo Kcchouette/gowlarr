@@ -176,8 +176,13 @@ type rssFeed struct {
 }
 
 type rssItem struct {
-	Title   string    `xml:"title"`
-	Link    string    `xml:"link"`
+	Title string `xml:"title"`
+	Link  string `xml:"link"`
+	// Enclosure carries the downloadable asset per the Newznab spec; <link>
+	// may point at a details page instead (feeds of some anime mirrors do).
+	Enclosure struct {
+		URL string `xml:"url,attr"`
+	} `xml:"enclosure"`
 	GUID    string    `xml:"guid"`
 	PubDate string    `xml:"pubDate"`
 	Attrs   []rssAttr `xml:"attr"`
@@ -296,7 +301,12 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 
 		pubDate := parseRSSDate(it.PubDate)
 
-		downloadLink := it.Link
+		// The enclosure is the download asset (Newznab spec); fall back to
+		// <link>, then the GUID, for feeds that leave it out.
+		downloadLink := it.Enclosure.URL
+		if downloadLink == "" {
+			downloadLink = it.Link
+		}
 		if downloadLink == "" {
 			downloadLink = it.GUID
 		}
