@@ -30,6 +30,7 @@ func (p *Provider) Protocol() model.Protocol {
 func (p *Provider) Search(ctx context.Context, q search.Query) ([]model.ReleaseInfo, error) {
 	query := cardigannengine.Query{
 		Keywords:   q.Keywords,
+		Type:       q.SearchType, // newznab t: search|tvsearch|…; "" → engine default "search"
 		Categories: q.Categories,
 		IMDBID:     q.IMDbID,
 		TMDBID:     q.TMDBID,
