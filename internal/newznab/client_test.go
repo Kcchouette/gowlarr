@@ -225,6 +225,33 @@ func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
 	}
 }
 
+// TestNew_TransportsForceHTTP2 pins the fix for the shared-transport Clone
+// footgun: Clone() inherits the source's post-auto-setup TLSClientConfig
+// (ALPN h2) but not its TLSNextProto map, so without ForceAttemptHTTP2 the
+// clone advertises h2 in ALPN while reading the response as HTTP/1.1 —
+// every constructor must force it, whatever the proxy/override shape.
+func TestNew_TransportsForceHTTP2(t *testing.T) {
+	plain, err := NewWithTransport("id", "name", "http://example.invalid", "key", "", nil)
+	if err != nil {
+		t.Fatalf("NewWithTransport: %v", err)
+	}
+	proxied, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080", nil)
+	if err != nil {
+		t.Fatalf("NewWithTransport proxied: %v", err)
+	}
+	overrides := NewWithOverrides("id", "name", "http://example.invalid", "key", nil)
+
+	for name, c := range map[string]*Client{"plain": plain, "proxied": proxied, "overrides": overrides} {
+		tr, ok := c.HTTPClient.Transport.(*http.Transport)
+		if !ok {
+			t.Fatalf("%s: expected *http.Transport, got %T", name, c.HTTPClient.Transport)
+		}
+		if !tr.ForceAttemptHTTP2 {
+			t.Errorf("%s: ForceAttemptHTTP2 = false, want true (h2/ALPN hybrid clone bug)", name)
+		}
+	}
+}
+
 func TestClient_Search_APIEndpoint(t *testing.T) {
 	cases := []struct {
 		name, baseURLSuffix, wantPath string

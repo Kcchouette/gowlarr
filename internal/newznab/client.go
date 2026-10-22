@@ -59,16 +59,27 @@ func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]str
 	return newClient(id, name, baseURL, apiKey, transportWithOverrides(overrides))
 }
 
+// cloneSharedTransport returns a per-client copy of the shared transport.
+// ForceAttemptHTTP2 is set unconditionally on purpose: Clone() first runs the
+// source transport's HTTP/2 auto-setup, so the copy inherits the source's
+// post-setup TLSClientConfig (which already advertises ALPN "h2") but NOT its
+// TLSNextProto map. Without the force, protocols() treats that inherited
+// TLSClientConfig as a custom TLS config, disables HTTP/2, and the client
+// then offers h2 via ALPN while reading the response as HTTP/1.1 — any
+// h2-speaking server breaks the request with "malformed HTTP response".
+func cloneSharedTransport() *http.Transport {
+	transport := sharedTransport.Clone()
+	transport.ForceAttemptHTTP2 = true
+	return transport
+}
+
 // transportWithOverrides clones the shared transport, optionally forcing DNS
 // resolution of specific hostnames to fixed IPs. The shared transport is
 // never mutated: each client gets its own clone.
 func transportWithOverrides(overrides map[string]string) *http.Transport {
-	transport := sharedTransport.Clone()
+	transport := cloneSharedTransport()
 	if len(overrides) > 0 {
 		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
-		// A custom DialContext disables HTTP/2 by default; re-enable it so
-		// Cloudflare-fronted hosts still negotiate properly.
-		transport.ForceAttemptHTTP2 = true
 	}
 	return transport
 }
@@ -102,7 +113,7 @@ func newClient(id, name, baseURL, apiKey string, transport *http.Transport) *Cli
 // per-indexer proxy (http://, https://, socks5://) and DNS overrides. The
 // proxy scheme is validated; an unsupported scheme returns an error.
 func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[string]string) (*Client, error) {
-	transport := sharedTransport.Clone()
+	transport := cloneSharedTransport()
 
 	if proxyURL != "" {
 		u, err := url.Parse(proxyURL)
@@ -138,13 +149,6 @@ func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[
 	// the base dialer).
 	if len(overrides) > 0 {
 		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
-	}
-
-	// Any custom DialContext (socks5 or DNS overrides) disables HTTP/2 by
-	// default; re-enable it so Cloudflare-fronted hosts still negotiate
-	// properly.
-	if transport.DialContext != nil {
-		transport.ForceAttemptHTTP2 = true
 	}
 
 	return newClient(id, name, baseURL, apiKey, transport), nil
