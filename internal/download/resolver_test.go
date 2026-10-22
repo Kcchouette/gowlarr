@@ -215,3 +215,160 @@ func TestResolver_PrivateIPBlocked(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestResolver_RejectsHTMLBody(t *testing.T) {
+	// A 200 HTML page (login / challenge / intermediate) must never be saved
+	// as a .torrent artifact.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Write([]byte("<!DOCTYPE html><html><head><title>Login</title></head><body></body></html>"))
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Html.Release", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
+
+	_, err := r.Resolve(context.Background(), release)
+	if err == nil {
+		t.Fatal("expected an error for an HTML download body")
+	}
+	if !strings.Contains(err.Error(), "returned HTML") {
+		t.Errorf("error should mention HTML payload, got %q", err)
+	}
+}
+
+func TestResolver_RejectsHTMLBody_WrongContentType(t *testing.T) {
+	// Mislabelled HTML (no text/html header) must still be rejected via body sniff.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("<html><body>Cloudflare challenge</body></html>"))
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Mislabelled.Html", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
+
+	_, err := r.Resolve(context.Background(), release)
+	if err == nil {
+		t.Fatal("expected an error for an HTML body with a non-HTML Content-Type")
+	}
+	if !strings.Contains(err.Error(), "returned HTML") {
+		t.Errorf("error should mention HTML payload, got %q", err)
+	}
+}
+
+func TestResolver_RejectsHTMLHeader_CaseInsensitive(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "TEXT/HTML")
+		w.Write([]byte("<!DOCTYPE html><html></html>"))
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Upper.CT", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
+
+	_, err := r.Resolve(context.Background(), release)
+	if err == nil || !strings.Contains(err.Error(), "returned HTML") {
+		t.Fatalf("expected HTML rejection for TEXT/HTML header, got %v", err)
+	}
+}
+
+func TestResolver_RejectsHTMLHeader_EmptyBody(t *testing.T) {
+	// Content-Type alone is enough when the body is empty or not sniffable.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Empty.Html", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
+
+	_, err := r.Resolve(context.Background(), release)
+	if err == nil || !strings.Contains(err.Error(), "returned HTML") {
+		t.Fatalf("expected HTML rejection for text/html header with empty body, got %v", err)
+	}
+}
+
+func TestResolver_AcceptsNzbXML(t *testing.T) {
+	// Real NZB files are XML: they must not be rejected as HTML.
+	const nzb = `<?xml version="1.0" encoding="utf-8"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb"><files></files></nzb>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-nzb")
+		w.Write([]byte(nzb))
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Xml.Nzb", DownloadLink: resolverTestBaseURL + "/dl.nzb", Protocol: model.ProtocolUsenet}
+
+	artifact, err := r.Resolve(context.Background(), release)
+	if err != nil {
+		t.Fatalf("Resolve NZB: %v", err)
+	}
+	if artifact.Filename != "Xml.Nzb.nzb" {
+		t.Errorf("unexpected filename: %q", artifact.Filename)
+	}
+	if string(artifact.Content) != nzb {
+		t.Errorf("unexpected content: %q", artifact.Content)
+	}
+}
+
+func TestResolver_AcceptsXHTMLWithXMLDecl(t *testing.T) {
+	// XHTML with an XML declaration sniffs as text/xml, not text/html.
+	const xhtml = `<?xml version="1.0"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml"></html>`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(xhtml))
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Xhtml.Nzb", DownloadLink: resolverTestBaseURL + "/dl.nzb", Protocol: model.ProtocolUsenet}
+
+	artifact, err := r.Resolve(context.Background(), release)
+	if err != nil {
+		t.Fatalf("Resolve XHTML-as-XML: %v", err)
+	}
+	if string(artifact.Content) != xhtml {
+		t.Errorf("unexpected content: %q", artifact.Content)
+	}
+}
+
+func TestResolver_AcceptsEmptyNonHTMLBody(t *testing.T) {
+	// Empty bodies with a non-HTML Content-Type are intentionally accepted
+	// (no schema validation); pins the deliberate non-rejection boundary.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}))
+	defer server.Close()
+
+	r := NewResolverWithClient(newResolverTestClient(server), nil)
+	release := model.ReleaseInfo{Title: "Empty.Octet", DownloadLink: resolverTestBaseURL + "/dl", Protocol: model.ProtocolTorrent}
+
+	if _, err := r.Resolve(context.Background(), release); err != nil {
+		t.Fatalf("expected empty non-HTML body to be accepted, got %v", err)
+	}
+}
+
+func TestLooksLikeHTML(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        string
+		want        bool
+	}{
+		{"header text/html", "text/html; charset=utf-8", "whatever", true},
+		{"header TEXT/HTML uppercase", "TEXT/HTML", "x", true},
+		{"header with spaces", "  text/html", "x", true},
+		{"body html5", "", "<!DOCTYPE html><html></html>", true},
+		{"body html with leading whitespace", "", "\n\n  <html></html>", true},
+		{"nzb xml", "application/x-nzb", `<?xml version="1.0"?><nzb></nzb>`, false},
+		{"bencode-ish", "application/x-bittorrent", "d8:announce4:xxee", false},
+		{"empty body empty ct", "", "", false},
+		{"empty body octet-stream", "application/octet-stream", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := looksLikeHTML(tc.contentType, []byte(tc.body)); got != tc.want {
+				t.Errorf("looksLikeHTML(%q, %q) = %v, want %v", tc.contentType, tc.body, got, tc.want)
+			}
+		})
+	}
+}
