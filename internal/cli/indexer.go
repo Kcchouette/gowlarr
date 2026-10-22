@@ -61,9 +61,11 @@ indexer (base URL + API key) instead.`,
 
 			// Reserved aliases add a native Newznab indexer, resolved before
 			// any definition lookup (there is no cached definition for it).
+			// Only baseurl is required: Spotweb-style public endpoints omit
+			// the apikey parameter entirely.
 			if isNewznabAlias(args[0]) {
 				def := newznabSyntheticDefinition()
-				if settingsMap, err = promptMissingSettings(def, settingsMap, errw); err != nil {
+				if settingsMap, err = promptNewznabSettings(def, settingsMap, errw); err != nil {
 					return err
 				}
 				instanceID := id
@@ -188,8 +190,9 @@ func promptMissingSettings(def definition.IndexerDefinition, settingsMap map[str
 }
 
 // newznabSyntheticDefinition is the in-memory definition backing native
-// Newznab adds: it drives the standard settings prompts (baseurl + apikey)
-// without any cached Cardigann definition.
+// Newznab adds: it drives the settings prompts (required baseurl + optional
+// apikey) without any cached Cardigann definition. apikey stays declared so
+// printSettingsSummary masks it when provided.
 func newznabSyntheticDefinition() definition.IndexerDefinition {
 	return definition.IndexerDefinition{
 		ID:   store.NewznabDefinitionID,
@@ -198,7 +201,7 @@ func newznabSyntheticDefinition() definition.IndexerDefinition {
 		Settings: []definition.Setting{
 			{Name: "baseurl", Type: "text", Label: "Base URL"},
 			{Name: "apikey", Type: "password", Label: "API Key"},
-			{Name: "info", Type: "info", Default: "Base URL: the indexer's API endpoint root, e.g. https://api.nzbgeek.info/. Indexers exposing the API under a custom path (e.g. https://example.invalid/api/v1/newznab) take the full path. API key: your indexer profile/API settings page."},
+			{Name: "info", Type: "info", Default: "Base URL: the indexer's API endpoint root, e.g. https://api.nzbgeek.info/. Indexers exposing the API under a custom path (e.g. https://example.invalid/api/v1/newznab) take the full path. API key: your indexer profile/API settings page — optional for open Spotweb instances (leave empty; the parameter is then omitted)."},
 		},
 	}
 }

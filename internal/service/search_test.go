@@ -3,6 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
@@ -105,5 +108,47 @@ func TestResolveLinks_EmptyInput(t *testing.T) {
 	got := svc.resolveLinks(context.Background(), nil, nil)
 	if len(got) != 0 {
 		t.Errorf("expected 0 releases, got %d", len(got))
+	}
+}
+
+// TestSearch_OneOffNewznabWithoutAPIKey: a one-off Newznab search with only
+// a base URL (no key) must query the ad-hoc provider — Spotweb public /api.
+func TestSearch_OneOffNewznabWithoutAPIKey(t *testing.T) {
+	var hits int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if _, ok := r.URL.Query()["apikey"]; ok {
+			t.Errorf("expected apikey omitted, got %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		fmt.Fprint(w, `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:newznab="http://www.newznab.com/DTD/2010/feeds/attributes/">
+  <channel>
+    <item>
+      <title>Spotweb.Release</title>
+      <guid>https://example.invalid/details/1</guid>
+      <link>https://example.invalid/get/1.nzb</link>
+      <pubDate>Mon, 02 Jan 2006 15:04:05 +0000</pubDate>
+      <newznab:attr name="size" value="100" />
+    </item>
+  </channel>
+</rss>`)
+	}))
+	defer server.Close()
+
+	svc := NewSearchService(openTestStore(t), testConfig())
+	result, err := svc.Search(context.Background(), SearchParams{
+		Keywords:    "ubuntu",
+		NewznabURL:  server.URL,
+		NewznabName: "spotweb-fixture",
+	})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if hits != 1 {
+		t.Errorf("ad-hoc newznab hits = %d, want 1", hits)
+	}
+	if len(result.Releases) != 1 || result.Releases[0].Title != "Spotweb.Release" {
+		t.Errorf("unexpected releases: %+v", result.Releases)
 	}
 }

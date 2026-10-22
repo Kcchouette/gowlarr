@@ -94,6 +94,66 @@ func (p stdinPrompter) Ask(label string, masked bool, help string) (string, erro
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
+// promptNewznabSettings fills the native Newznab settings for `indexer add
+// newznab|nzb|usenet`. Only baseurl is hard-required; apikey is optional
+// (public Spotweb endpoints reject an empty apikey= and answer only when
+// the parameter is omitted). apikey stays in def.Settings so
+// printSettingsSummary masks a provided key.
+func promptNewznabSettings(def definition.IndexerDefinition, provided map[string]string, errw io.Writer) (map[string]string, error) {
+	printInfoSettings(def, errw)
+
+	out := make(map[string]string, len(provided)+2)
+	for k, v := range provided {
+		out[k] = v
+	}
+
+	var missingBase bool
+	for _, s := range def.Settings {
+		if s.Name == "baseurl" {
+			_, present := provided["baseurl"]
+			missingBase = !present
+			break
+		}
+	}
+	if missingBase {
+		if !stdinIsTerminal() {
+			return nil, fmt.Errorf("newznab indexer requires settings: baseurl (provide it with --setting baseurl=...; --setting apikey=... is optional)")
+		}
+		v, err := newStdinPrompter(errw).Ask("Base URL", false, "")
+		if err != nil {
+			return nil, fmt.Errorf("prompting %q: %w", "baseurl", err)
+		}
+		out["baseurl"] = v
+	}
+
+	// Optional interactive apikey when not supplied via --setting.
+	if _, ok := out["apikey"]; !ok && stdinIsTerminal() {
+		for _, s := range def.Settings {
+			if s.Name != "apikey" {
+				continue
+			}
+			v, err := newStdinPrompter(errw).Ask(s.Label, true, "API Key (optional; leave empty for open Spotweb instances)")
+			if err != nil {
+				return nil, fmt.Errorf("prompting %q: %w", s.Name, err)
+			}
+			out["apikey"] = v
+			break
+		}
+	}
+
+	printSettingsSummary(def, out, errw)
+	return out, nil
+}
+
+// printInfoSettings prints each info setting's Default once as help.
+func printInfoSettings(def definition.IndexerDefinition, w io.Writer) {
+	for _, s := range def.Settings {
+		if s.Type == "info" && s.Default != "" {
+			fmt.Fprintln(w, s.Default)
+		}
+	}
+}
+
 // runPrompts interactively fills the missing required settings of def,
 // printing each info setting's Default text once as help beforehand. The
 // result merges prompted values into a copy of provided.

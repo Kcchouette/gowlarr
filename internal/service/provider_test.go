@@ -68,6 +68,27 @@ func TestBuildConfiguredProviders_IncludesNativeNewznab(t *testing.T) {
 	}
 }
 
+func TestBuildConfiguredProviders_NewznabWithoutAPIKey(t *testing.T) {
+	st := openTestStore(t)
+	svc := NewIndexerService(st, testConfig())
+	// Open Spotweb instances: baseurl only, no apikey. The config must be
+	// included (previously skipped with "missing apikey setting").
+	if err := svc.AddNewznab("spotweb", "https://spotweb.example.invalid/", "", ""); err != nil {
+		t.Fatalf("AddNewznab: %v", err)
+	}
+
+	providers, err := BuildConfiguredProviders(st, testConfig())
+	if err != nil {
+		t.Fatalf("BuildConfiguredProviders: %v", err)
+	}
+	if len(providers) != 1 {
+		t.Fatalf("expected 1 provider, got %d", len(providers))
+	}
+	if providers[0].ID() != "spotweb" {
+		t.Errorf("provider ID = %q, want spotweb", providers[0].ID())
+	}
+}
+
 func TestBuildConfiguredProviders_NewznabMissingSettings_Skips(t *testing.T) {
 	st := openTestStore(t)
 	// A native config with empty settings (e.g. hand-edited DB) must be

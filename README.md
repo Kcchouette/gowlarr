@@ -90,11 +90,11 @@ gowlarr download <result-id> --stdout       # Print to stdout
 
 ### Usenet (Newznab)
 
-Generic Newznab indexers (base URL + API key) can be added as persistent
-indexers, exactly like Cardigann ones:
+Generic Newznab indexers (base URL, optional API key) can be added as
+persistent indexers, exactly like Cardigann ones:
 
 ```bash
-gowlarr indexer add newznab                    # interactive: base URL + API key
+gowlarr indexer add newznab                    # interactive: base URL + optional API key
 gowlarr indexer add usenet --setting baseurl=https://api.indexer.example --setting apikey=YOUR_KEY --id indexer
 gowlarr indexer test indexer                   # test connectivity/authentication
 ```
@@ -104,7 +104,9 @@ indexer (persisted in SQLite, served by the native Newznab client, part of
 every search and of the Torznab/Newznab server). The instance ID defaults to
 the base URL's hostname (`--id` overrides it). A bare origin gets `/api`
 appended; indexers exposing the API under a custom path (e.g.
-`https://example.invalid/api/v1/newznab`) take the full URL. Two real-world
+`https://example.invalid/api/v1/newznab`) take the full URL. The API key is
+optional: when empty the `apikey` query parameter is omitted (required for
+open Spotweb instances, which reject an empty `apikey=`). Real-world
 examples:
 
 ```bash
@@ -115,12 +117,19 @@ gowlarr indexer add newznab --id animetosho \
 # Private anime NZB indexer: a real API key from your profile is required
 gowlarr indexer add newznab --id amenzb \
   --setting baseurl=https://amenzb.moe/api --setting apikey=YOUR_KEY
+
+# Open Spotweb instances: HTTPS base URL only (no apikey parameter)
+gowlarr indexer add newznab --id spotnzb \
+  --setting baseurl=https://www.spotnzb.com
+gowlarr indexer add newznab --id nzbserver \
+  --setting baseurl=https://www.nzbserver.com
 ```
 
 For a one-off search without persisting anything:
 
 ```bash
 gowlarr search "query" --newznab-url https://indexer.example.com --newznab-apikey YOUR_KEY
+# --newznab-apikey is optional (omit for open Spotweb)
 ```
 
 ## Available Commands

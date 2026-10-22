@@ -77,7 +77,8 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 	// No default indexers: only explicitly configured (enabled) indexers and
 	// an ad-hoc newznab are queried.
 	var providers []search.Provider
-	if params.IndexerID == "" && params.NewznabURL != "" && params.NewznabAPIKey != "" {
+	// NewznabAPIKey is optional (Spotweb public /api answers without a key).
+	if params.IndexerID == "" && params.NewznabURL != "" {
 		name := params.NewznabName
 		if name == "" {
 			name = "newznab-generic"
