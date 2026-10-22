@@ -48,6 +48,13 @@ gowlarr defs list           # List available definitions
 gowlarr defs show <id>      # Show definition details
 ```
 
+`defs sync` additionally ingests every `definitions-local/*.yml` next to the
+working directory (or next to the executable) under the reserved version
+`local`, which always wins over the synced corpus. That directory is
+gitignored on purpose — your own definitions (e.g. a personal JSON-API
+indexer such as `aninzb.yml`) stay yours and are never redistributed; the
+tests carry anonymized inline copies instead.
+
 ### Manage indexers
 
 ```bash
@@ -97,8 +104,20 @@ indexer (persisted in SQLite, served by the native Newznab client, part of
 every search and of the Torznab/Newznab server). The instance ID defaults to
 the base URL's hostname (`--id` overrides it). A bare origin gets `/api`
 appended; indexers exposing the API under a custom path (e.g.
-`https://example.invalid/api/v1/newznab`) take the full URL. For a one-off
-search without persisting anything:
+`https://example.invalid/api/v1/newznab`) take the full URL. Two real-world
+examples:
+
+```bash
+# Anime Newznab mirror: accepts any placeholder API key
+gowlarr indexer add newznab --id animetosho \
+  --setting baseurl=https://feed.animetosho.net/api/newznab --setting apikey=x
+
+# Private anime NZB indexer: a real API key from your profile is required
+gowlarr indexer add newznab --id amenzb \
+  --setting baseurl=https://amenzb.moe/api --setting apikey=YOUR_KEY
+```
+
+For a one-off search without persisting anything:
 
 ```bash
 gowlarr search "query" --newznab-url https://indexer.example.com --newznab-apikey YOUR_KEY
