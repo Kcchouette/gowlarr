@@ -74,7 +74,7 @@ search:
 `
 
 // localJSONBody exercises the three interesting shapes: a full item, an
-// item with a null AniDB-style id, and an item without any download link.
+// item with a null optional series id, and an item without any download link.
 const localJSONBody = `{"total_count":3,"items":[
   {"filename":"Example.Show.S01E01.1080p.WEB-DL-GRP","anidb":12345,"size":123456789,"date":1792340016,"nzb":"http://example.invalid/get/1.nzb"},
   {"filename":"Example.Show.S01E02.1080p.WEB-DL-GRP","anidb":null,"size":987654,"date":1792340000,"nzb":"http://example.invalid/get/2.nzb"},
