@@ -65,8 +65,8 @@ func (s *IndexerService) Add(defID, instanceID, version, proxyURL string, settin
 	return nil
 }
 
-// AddNewznab persists a native Newznab indexer (base URL + API key), the
-// entry point behind `gowlarr indexer add newznab|nzb|usenet`. The config
+// AddNewznab persists a native Newznab indexer (base URL, optional API key),
+// the entry point behind `gowlarr indexer add newznab|nzb|usenet`. The config
 // uses the reserved DefinitionID store.NewznabDefinitionID and is served by
 // the native newznab client.
 func (s *IndexerService) AddNewznab(instanceID, baseURL, apiKey, proxyURL string) error {

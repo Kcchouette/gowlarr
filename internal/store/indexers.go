@@ -8,7 +8,7 @@ import (
 )
 
 // NewznabDefinitionID is the reserved DefinitionID of native Newznab
-// indexers (settings: baseurl + apikey). It is NOT a cached Cardigann
+// indexers (settings: baseurl, optional apikey). It is NOT a cached Cardigann
 // definition: configs with this ID are served by the native newznab client,
 // so every code path that would load a definition for this ID must branch
 // on it BEFORE the definition lookup.

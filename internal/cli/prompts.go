@@ -108,10 +108,12 @@ func promptNewznabSettings(def definition.IndexerDefinition, provided map[string
 	}
 
 	var missingBase bool
+	var baseLabel = "baseurl"
 	for _, s := range def.Settings {
 		if s.Name == "baseurl" {
 			_, present := provided["baseurl"]
 			missingBase = !present
+			baseLabel = displaySettingLabel(s)
 			break
 		}
 	}
@@ -119,7 +121,7 @@ func promptNewznabSettings(def definition.IndexerDefinition, provided map[string
 		if !stdinIsTerminal() {
 			return nil, fmt.Errorf("newznab indexer requires settings: baseurl (provide it with --setting baseurl=...; --setting apikey=... is optional)")
 		}
-		v, err := newStdinPrompter(errw).Ask("Base URL", false, "")
+		v, err := newStdinPrompter(errw).Ask(baseLabel, false, "")
 		if err != nil {
 			return nil, fmt.Errorf("prompting %q: %w", "baseurl", err)
 		}
@@ -132,7 +134,7 @@ func promptNewznabSettings(def definition.IndexerDefinition, provided map[string
 			if s.Name != "apikey" {
 				continue
 			}
-			v, err := newStdinPrompter(errw).Ask(s.Label, true, "API Key (optional; leave empty for open Spotweb instances)")
+			v, err := newStdinPrompter(errw).Ask(displaySettingLabel(s), true, "API Key (optional; leave empty for open Spotweb instances)")
 			if err != nil {
 				return nil, fmt.Errorf("prompting %q: %w", s.Name, err)
 			}

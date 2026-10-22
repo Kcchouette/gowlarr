@@ -42,7 +42,7 @@ func newIndexerAddCmd() *cobra.Command {
 The query can be a definition ID (e.g. "1337x"), a domain (e.g. "abn.lol"),
 or a partial name (e.g. "abnormal"). The system resolves it automatically.
 The reserved aliases "newznab", "nzb" and "usenet" add a native Newznab
-indexer (base URL + API key) instead.`,
+indexer (base URL, optional API key) instead.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, cfg, err := openStore()
