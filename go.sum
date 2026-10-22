@@ -1,5 +1,5 @@
-github.com/Kcchouette/cardigann-go v0.6.0 h1:B7nleCglZqlIvdc+doQdj6v9/OeNV2PpK/hWURLn42M=
-github.com/Kcchouette/cardigann-go v0.6.0/go.mod h1:LZhJmkMvDeECr5wR28SYqY8z/cj+j1rdrDX4xrNgTec=
+github.com/Kcchouette/cardigann-go v0.6.1 h1:zkCrf+EY+Vmcd+D+KdimfZWGj3MaCfyrG7oHhcpappk=
+github.com/Kcchouette/cardigann-go v0.6.1/go.mod h1:LZhJmkMvDeECr5wR28SYqY8z/cj+j1rdrDX4xrNgTec=
 github.com/PuerkitoBio/goquery v1.13.0 h1:mqHbjD7Jmnul4DTR24LKTjo1uUmHUh072kteGV+xpFM=
 github.com/PuerkitoBio/goquery v1.13.0/go.mod h1:Hip5mdBL8K2wEGKJdr27sRaNwIdDajmCwB/ExUPwW+g=
 github.com/andybalholm/cascadia v1.3.5 h1:RLjq12WJy58dN6eCIQrz0bAGZkztHWsEPFxP53Y7Ms8=

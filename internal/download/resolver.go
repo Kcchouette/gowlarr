@@ -131,7 +131,29 @@ func (r *Resolver) fetch(ctx context.Context, link string, trustedHost string) (
 		return nil, fmt.Errorf("http status %d", resp.StatusCode)
 	}
 
-	return io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB max, memory safety guard.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20)) // 64 MiB max, memory safety guard.
+	if err != nil {
+		return nil, fmt.Errorf("reading download body: %w", err)
+	}
+	// A 200 HTML page is a login form, WAF challenge, or intermediate page —
+	// never a torrent/nzb stream. Reject it so the user sees a clear error
+	// instead of a corrupt artifact on disk.
+	if looksLikeHTML(resp.Header.Get("Content-Type"), body) {
+		return nil, fmt.Errorf("download from %s returned HTML (Content-Type %q) instead of a torrent/nzb payload",
+			link, resp.Header.Get("Content-Type"))
+	}
+	return body, nil
+}
+
+// looksLikeHTML reports whether the download is an HTML document rather than
+// a binary torrent/nzb stream. Both the Content-Type header and the body are
+// consulted: some trackers mislabel bodies, and some error pages omit the
+// header. XML is intentionally not rejected — valid NZB files are XML.
+func looksLikeHTML(contentType string, body []byte) bool {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(contentType)), "text/html") {
+		return true
+	}
+	return strings.HasPrefix(http.DetectContentType(body), "text/html")
 }
 
 // hostOf returns the hostname (without port) of rawURL, or an empty string
