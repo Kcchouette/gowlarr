@@ -61,7 +61,22 @@ zero `PublishDate`).
   README + this spec): `baseurl=https://feed.animetosho.net/api/newznab`
   with any placeholder API key (the server ignores it — verified) and
   `baseurl=https://amenzb.moe/api` with a real API key (registration not
-  yet obtained — live verification deferred, caps evidence recorded).
+  yet obtained — live verification deferred, caps evidence recorded: `GET
+  /api?t=caps` answers a full Newznab caps document with `search`/`tv-search`
+  and subcat `5070`, while `t=search` without a key returns `<error
+  code="100" description="Missing parameter (apikey)"/>`).
+- **Newznab client hardening (discovered by the live smokes, fixed within
+  the feature)**: (1) cloned shared transports set `ForceAttemptHTTP2`
+  unconditionally — `Clone()` runs the source's HTTP/2 auto-setup first, so
+  the copy inherits the source's post-setup `TLSClientConfig` (ALPN `h2`)
+  but *not* its `TLSNextProto` map; without the force the client advertises
+  h2 in ALPN while reading the response as HTTP/1.1 (`malformed HTTP
+  response` against any h2-speaking feed). Pinned by
+  `TestNew_TransportsForceHTTP2`. (2) Download links prefer the item
+  **`<enclosure>`** over `<link>` (per the Newznab spec the enclosure is
+  the download asset; the anime mirror's `<link>` is its view page —
+  previously fetched and saved as an HTML `.nzb`). Fallback: enclosure →
+  link → GUID; pinned by `TestClient_Search_PrefersEnclosure`.
 - **Tests are anonymized**: unit/integration tests must not contain any of
   the real site names, hostnames, or release titles — synthetic ids
   (`localjson`), `httptest` URLs, and fictional filenames only. The real
@@ -80,50 +95,59 @@ zero `PublishDate`).
   template variables (Artist/Album/Title/Author — empty renders are
   harmless).
 - Any `replace`/pseudo-version fallback if the upstream push is declined.
+- Body sniffing of downloaded artifacts (an HTML page saved as `.nzb`):
+  the resolver has no content guard — pre-existing, owned by the
+  search-results-quality surface; the enclosure fix removes the concrete
+  trigger found here.
+- The same `Clone()` HTTP/2 footgun in cardigann-go's
+  `httpclient.buildTransport` proxy branches (the no-proxy path returns the
+  shared transport as-is and is unaffected, which is why the local
+  definition smokes pass): latent, needs its own upstream tag cycle —
+  follow-up.
 
 ## Tasks
 
-- [ ] T1: cardigann-go branch migration with WIP rescue — acceptance: WIP
+- [x] T1: cardigann-go branch migration with WIP rescue — acceptance: WIP
       (`.golangci.yml`, Makefile, `.editorconfig`) committed on the branch
       or explicitly abandoned by the user; master contains Go 1.27 + new
       `ci.yml`; worktree and branch deleted without `--force`;
       `make fmt-check && make vet && make test-race` green (covers: S2)
-- [ ] T2: `engine.Query.Type` + `"search"` default + `engine/querytype_test.go`
+- [x] T2: `engine.Query.Type` + `"search"` default + `engine/querytype_test.go`
       (3 template motifs, default, season-only gate) — acceptance: 4
       scenarios green, `rctx.Query["Type"]` never empty, `defstest` drift
       checked (covers: S2; depends: T1)
-- [ ] T3: `unixdate` filter + tests — acceptance: `1792340016` →
+- [x] T3: `unixdate` filter + tests — acceptance: `1792340016` →
       `2026-10-18T16:13:36Z` exactly, rejects green, integration date
       non-zero (covers: S2; depends: T1)
-- [ ] T4: STOP — confirm push + tag `v0.6.0` with the user, then push and
+- [x] T4: STOP — confirm push + tag `v0.6.0` with the user, then push and
       verify the GitHub Actions run is green via API — acceptance:
       confirmation obtained before any push; tag on origin; CI
       `conclusion=success`; refusal/report → halt, no workaround
       (covers: S2; depends: T1, T2, T3)
-- [ ] T5: gowlarr `go get cardigann-go@v0.6.0` + tidy — acceptance:
+- [x] T5: gowlarr `go get cardigann-go@v0.6.0` + tidy — acceptance:
       `go.mod` pins v0.6.0, no `replace`, `go build ./...` green
       (covers: S2; depends: T4)
-- [ ] T6: adapter forwards `SearchType` + anonymized fixture test with
+- [x] T6: adapter forwards `SearchType` + anonymized fixture test with
       `t: "{{ .Query.Type }}"` — acceptance: `tvsearch` and default
       `search` assertions green (covers: S2; depends: T5)
-- [ ] T7: `definitions-local/aninzb.yml` (real file, main checkout) +
+- [x] T7: `definitions-local/aninzb.yml` (real file, main checkout) +
       anonymized integration test (JSON fixture: full item, item without
       `nzb`, `anidb: null`) — acceptance: query params/no-empty-params,
       title/size/absolute link, `PublishDate == time.Unix(1792340016,0).UTC()`,
       conditional details, observed no-nzb behavior, usenet protocol all
       green; `response: type: json` proven by extracted rows (covers: S2;
       depends: T3, T5)
-- [ ] T8: README (local-defs ingestion note + the two native Newznab
+- [x] T8: README (local-defs ingestion note + the two native Newznab
       examples) + this spec — acceptance: both README edits present, spec
       status `in-progress` (delivered belongs to T12) (covers: S2;
       depends: T7)
-- [ ] T9: live smoke, local definition — `defs sync` ingests the yml,
+- [x] T9: live smoke, local definition — `defs sync` ingests the yml,
       `indexer test` OK, pre-validated tvsearch query returns ≥1 result
       with RFC3339 date — acceptance: command outputs recorded
       (covers: S2; depends: T7)
-- [ ] T10: live smoke, native Newznab mirror — `indexer test` OK, tvsearch
+- [x] T10: live smoke, native Newznab mirror — `indexer test` OK, tvsearch
       ≥1 result — acceptance: outputs recorded (covers: S2; depends: T5)
-- [ ] T11: documented native Newznab integration for the key-requiring site
+- [x] T11: documented native Newznab integration for the key-requiring site
       — acceptance: README + spec carry the exact config, caps evidence
       recorded, live test marked deferred (covers: S2)
 - [ ] T12: independent review green (spec / correctness / consistency,
