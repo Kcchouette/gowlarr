@@ -290,7 +290,7 @@ func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
 // footgun: Clone() inherits the source's post-auto-setup TLSClientConfig
 // (ALPN h2) but not its TLSNextProto map, so without ForceAttemptHTTP2 the
 // clone advertises h2 in ALPN while reading the response as HTTP/1.1 —
-// every constructor must force it, whatever the proxy/override shape.
+// every constructor must force it, whatever the proxy/DNS-server shape.
 func TestNew_TransportsForceHTTP2(t *testing.T) {
 	plain, err := NewWithTransport("id", "name", "http://example.invalid", "key", "")
 	if err != nil {
