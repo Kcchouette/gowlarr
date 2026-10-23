@@ -67,9 +67,11 @@ Many DDL sites rotate their domain every few months; the old origin often
 answers with a `301` to the new one for a while. Gowlarr follows the
 redirect, rewrites result URLs against the new origin immediately, and — for
 definitions you own in `definitions-local/` — persists the change: the
-`links[0]` line in the local YAML is rewritten in place (comments preserved,
-with a trailing `# rotated-from: <old>` note) and the local definition cache
-is refreshed. `gowlarr indexer test <id>` can be used as a rotation probe.
+`links[0]` line in the local YAML is rewritten in place (comments preserved)
+and the previous base URL is recorded in the standard Cardigann
+`legacylinks:` list (same convention as Prowlarr indexer definitions). The
+local definition cache is refreshed. `gowlarr indexer test <id>` can be used
+as a rotation probe.
 Upstream (synced) definitions are never rewritten on disk; edit them or wait
 for the upstream update. If the old domain dies without ever redirecting,
 update `links[0]` manually and re-run `gowlarr defs sync`.

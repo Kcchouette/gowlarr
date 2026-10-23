@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/Kcchouette/cardigann-go/definition"
+	"gopkg.in/yaml.v3"
 )
 
 // withLocalDefs points LocalDefsDir discovery at a temp dir via the
@@ -54,22 +55,23 @@ search:
       text: t
 `
 
-func TestRewriteLinksFirstEntry_PreservesComments(t *testing.T) {
-	newRaw, ok := rewriteLinksFirstEntry(fixtureYAML, "https://example.com", "https://example.org/")
+func TestRewriteLinksFirstEntry_LegacyLinksBlock(t *testing.T) {
+	newRaw, ok := rewriteLinksFirstEntry(fixtureYAML, "https://example.com")
 	if !ok {
 		t.Fatal("rewrite refused")
 	}
 	if !strings.Contains(newRaw, "# Site rotates domains; put the current origin first in links.") {
 		t.Error("header comment lost")
 	}
-	if !strings.Contains(newRaw, "- https://example.com/") {
+	if !strings.Contains(newRaw, "  - https://example.com/") {
 		t.Errorf("links[0] not rewritten:\n%s", newRaw)
 	}
-	if !strings.Contains(newRaw, "# rotated-from: https://example.org/") {
-		t.Errorf("rotated-from note missing:\n%s", newRaw)
+	if strings.Contains(newRaw, "rotated-from") {
+		t.Errorf("no rotated-from trail expected:\n%s", newRaw)
 	}
-	if strings.Contains(newRaw, "- https://example.org/") {
-		t.Errorf("old origin still in links[0]:\n%s", newRaw)
+	// Exact legacylinks block shape pinned (insert before the next root key).
+	if !strings.Contains(newRaw, "legacylinks:\n  - https://example.org/\nsearch:") {
+		t.Errorf("legacylinks block shape wrong:\n%s", newRaw)
 	}
 	def, err := definition.Parse([]byte(newRaw))
 	if err != nil {
@@ -78,67 +80,254 @@ func TestRewriteLinksFirstEntry_PreservesComments(t *testing.T) {
 	if len(def.Links) == 0 || def.Links[0] != "https://example.com/" {
 		t.Errorf("parsed links[0] = %v", def.Links)
 	}
+	if len(def.LegacyLinks) != 1 || def.LegacyLinks[0] != "https://example.org/" {
+		t.Errorf("parsed legacylinks = %v", def.LegacyLinks)
+	}
 }
 
-func TestRewriteLinksFirstEntry_QuotedPreserved(t *testing.T) {
+func TestRewriteLinksFirstEntry_QuotedLinkPreserved(t *testing.T) {
 	in := strings.Replace(fixtureYAML, "- https://example.org/", `- "https://example.org/"`, 1)
-	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com", "https://example.org/")
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
 	if !ok {
 		t.Fatal("rewrite refused")
 	}
 	if !strings.Contains(newRaw, `- "https://example.com/"`) {
 		t.Errorf("quoting not preserved:\n%s", newRaw)
 	}
+	if !strings.Contains(newRaw, "legacylinks:") {
+		t.Errorf("legacylinks missing:\n%s", newRaw)
+	}
 }
 
-func TestRewriteLinksFirstEntry_FlowStyleNoWrite(t *testing.T) {
+func TestRewriteLinksFirstEntry_FlowLinksRefused(t *testing.T) {
 	in := "id: f\nlinks: [https://example.org/]\n"
-	if _, ok := rewriteLinksFirstEntry(in, "https://example.com", "https://example.org/"); ok {
+	if _, ok := rewriteLinksFirstEntry(in, "https://example.com"); ok {
 		t.Fatal("flow-style links must refuse to write")
 	}
 }
 
-func TestRewriteLinksFirstEntry_ExistingLineCommentPreserved(t *testing.T) {
+func TestRewriteLinksFirstEntry_UserCommentKept(t *testing.T) {
 	in := strings.Replace(fixtureYAML,
 		"- https://example.org/",
 		"- https://example.org/  # my pinned origin",
 		1)
-	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com", "https://example.org/")
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
 	if !ok {
 		t.Fatal("rewrite refused")
 	}
 	if !strings.Contains(newRaw, "# my pinned origin") {
 		t.Errorf("existing line comment lost:\n%s", newRaw)
 	}
-	if !strings.Contains(newRaw, "rotated-from:") {
-		t.Errorf("rotated-from missing:\n%s", newRaw)
+	if strings.Contains(newRaw, "rotated-from") {
+		t.Errorf("no note should be added:\n%s", newRaw)
 	}
 }
 
-func TestRewriteLinksFirstEntry_SecondRotationReplaces(t *testing.T) {
-	first, ok := rewriteLinksFirstEntry(fixtureYAML, "https://example.com", "https://example.org/")
+func TestRewriteLinksFirstEntry_RotatedFromStripped(t *testing.T) {
+	cases := []struct{ name, in, wantRest string }{
+		{"note only", "- https://example.org/ # rotated-from: https://a.example/", ""},
+		{"user pin join", "- https://example.org/ # my pin | rotated-from: https://a.example/", " # my pin"},
+		{"user comment", "- https://example.org/ # my pin", " # my pin"},
+		{"pipe suffix preserved", "- https://example.org/ # a| | rotated-from: https://a.example/", " # a|"},
+		{"double note", "- https://example.org/ # a | rotated-from: X | rotated-from: Y", " # a"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := strings.Replace(fixtureYAML, "- https://example.org/", tc.in, 1)
+			newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+			if !ok {
+				t.Fatal("rewrite refused")
+			}
+			rewrittenLine := ""
+			for _, l := range strings.Split(newRaw, "\n") {
+				if strings.Contains(l, "https://example.com/") {
+					rewrittenLine = l
+					break
+				}
+			}
+			if rewrittenLine == "" {
+				t.Fatalf("rewritten line not found:\n%s", newRaw)
+			}
+			rest := ""
+			// Rest = everything after the (unquoted) token.
+			unquoted := "https://example.com/"
+			if i := strings.Index(rewrittenLine, unquoted); i >= 0 {
+				rest = rewrittenLine[i+len(unquoted):]
+			}
+			if rest != tc.wantRest {
+				t.Errorf("rest = %q, want %q\nline: %s", rest, tc.wantRest, rewrittenLine)
+			}
+			if strings.Contains(newRaw, "rotated-from") {
+				t.Errorf("note not stripped:\n%s", newRaw)
+			}
+		})
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksAppend(t *testing.T) {
+	in := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks:\n  - https://a.example/\n  - https://b.example/\nsearch:",
+		1)
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw, "legacylinks:\n  - https://a.example/\n  - https://b.example/\n  - https://example.org/\nsearch:") {
+		t.Errorf("legacylinks append wrong:\n%s", newRaw)
+	}
+	def, err := definition.Parse([]byte(newRaw))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(def.LegacyLinks) != 3 {
+		t.Errorf("legacylinks = %v", def.LegacyLinks)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksDedup(t *testing.T) {
+	in := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks:\n  - https://example.org/\nsearch:",
+		1)
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if strings.Count(newRaw, "https://example.org/") != 1 {
+		t.Errorf("duplicate legacy entry:\n%s", newRaw)
+	}
+	if !strings.Contains(newRaw, "- https://example.com/") {
+		t.Errorf("links[0] rewrite missing:\n%s", newRaw)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksFlow(t *testing.T) {
+	in := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks: [https://a.example/, https://b.example/]\nsearch:",
+		1)
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw, "legacylinks: [https://a.example/, https://b.example/, https://example.org/]") {
+		t.Errorf("flow append wrong:\n%s", newRaw)
+	}
+	def, err := definition.Parse([]byte(newRaw))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(def.LegacyLinks) != 3 {
+		t.Errorf("legacylinks = %v", def.LegacyLinks)
+	}
+
+	// A "]" inside a trailing comment must not be mistaken for the closer.
+	inComment := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks: [https://a.example/] # see [docs]\nsearch:",
+		1)
+	newRaw3, ok := rewriteLinksFirstEntry(inComment, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw3, "legacylinks: [https://a.example/, https://example.org/] # see [docs]") {
+		t.Errorf("comment bracket defeated the search:\n%s", newRaw3)
+	}
+
+	// IPv6 item defeats the bracket search: history skipped, rewrite kept.
+	// The item must be quoted or the bare "[" starts a nested flow seq.
+	inIPv6 := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks: [\"https://[::1]/\"]\nsearch:",
+		1)
+	newRaw2, ok := rewriteLinksFirstEntry(inIPv6, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw2, `legacylinks: ["https://[::1]/"]`) {
+		t.Errorf("flow should be untouched for IPv6 items:\n%s", newRaw2)
+	}
+	if !strings.Contains(newRaw2, "- https://example.com/") {
+		t.Errorf("links[0] rewrite missing on IPv6 guard:\n%s", newRaw2)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksFlowEmpty(t *testing.T) {
+	in := strings.Replace(fixtureYAML, "search:", "legacylinks: []\nsearch:", 1)
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw, "legacylinks: [https://example.org/]") {
+		t.Errorf("empty flow insert wrong:\n%s", newRaw)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksNonSequence(t *testing.T) {
+	in := strings.Replace(fixtureYAML, "search:", "legacylinks:\n  foo: bar\nsearch:", 1)
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite must still apply")
+	}
+	if !strings.Contains(newRaw, "- https://example.com/") {
+		t.Errorf("links[0] rewrite missing:\n%s", newRaw)
+	}
+	if !strings.Contains(newRaw, "legacylinks:\n  foo: bar") {
+		t.Errorf("non-sequence legacylinks must be left alone:\n%s", newRaw)
+	}
+	// Still valid YAML (cardigann definition.Parse would reject the wrong
+	// legacylinks type, but the raw file must remain well-formed).
+	var probe map[string]any
+	if err := yaml.Unmarshal([]byte(newRaw), &probe); err != nil {
+		t.Errorf("YAML must stay well-formed: %v", err)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksAtEOF(t *testing.T) {
+	// links is the last root key; file ends with a newline.
+	in := "id: eof\nlinks:\n  - https://example.org/\n"
+	newRaw, ok := rewriteLinksFirstEntry(in, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw, "links:\n  - https://example.com/\nlegacylinks:\n  - https://example.org/\n") {
+		t.Errorf("EOF block shape wrong:\n%s", newRaw)
+	}
+	if !strings.HasSuffix(newRaw, "\n") {
+		t.Errorf("trailing newline lost:\n%q", newRaw)
+	}
+	if strings.Contains(newRaw, "\n\n") {
+		t.Errorf("unexpected blank line:\n%q", newRaw)
+	}
+}
+
+func TestRewriteLinksFirstEntry_LegacyLinksGrowOnSecondRotation(t *testing.T) {
+	first, ok := rewriteLinksFirstEntry(fixtureYAML, "https://example.com")
 	if !ok {
 		t.Fatal("first rewrite refused")
 	}
-	second, ok := rewriteLinksFirstEntry(first, "https://example.net", "https://example.com/")
+	second, ok := rewriteLinksFirstEntry(first, "https://example.net")
 	if !ok {
 		t.Fatal("second rewrite refused")
 	}
 	if !strings.Contains(second, "- https://example.net/") {
 		t.Errorf("second rotation did not replace origin:\n%s", second)
 	}
-	if strings.Contains(second, "rotated-from: https://example.org/") {
-		t.Errorf("stale rotated-from not replaced:\n%s", second)
+	def, err := definition.Parse([]byte(second))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
 	}
-	if !strings.Contains(second, "rotated-from: https://example.com/") {
-		t.Errorf("rotated-from should record previous effective origin:\n%s", second)
+	if len(def.LegacyLinks) != 2 ||
+		def.LegacyLinks[0] != "https://example.org/" ||
+		def.LegacyLinks[1] != "https://example.com/" {
+		t.Errorf("legacylinks history = %v, want [org, com]", def.LegacyLinks)
 	}
 }
 
-func TestMaybePersistRotation_EndToEnd(t *testing.T) {
+func TestMaybePersistRotation_LegacyLinksEndToEnd(t *testing.T) {
 	local := withLocalDefs(t, map[string]string{"rotfix.yml": fixtureYAML})
 	st := openTestStore(t)
-	// Seed the DB cache as IngestLocal would.
 	if err := st.SaveDefinition("rotfix", "local", "", fixtureYAML); err != nil {
 		t.Fatal(err)
 	}
@@ -152,11 +341,14 @@ func TestMaybePersistRotation_EndToEnd(t *testing.T) {
 	if !strings.Contains(string(raw), "https://example.com/") {
 		t.Errorf("file not rewritten:\n%s", raw)
 	}
+	if !strings.Contains(string(raw), "legacylinks:\n  - https://example.org/") {
+		t.Errorf("legacylinks missing in file:\n%s", raw)
+	}
 	cached, err := st.GetDefinitionYAML("rotfix", "local")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(cached, "https://example.com/") {
+	if !strings.Contains(cached, "https://example.com/") || !strings.Contains(cached, "legacylinks:") {
 		t.Errorf("DB cache not updated:\n%s", cached)
 	}
 }
