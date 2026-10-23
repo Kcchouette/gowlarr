@@ -12,8 +12,8 @@ import (
 const dnsLookupTimeout = 3 * time.Second
 
 var lookupHost = func(ctx context.Context, host string) ([]string, error) {
-	if ip, ok := currentDNSOverrides()[strings.ToLower(host)]; ok {
-		return []string{ip}, nil
+	if r := currentDNSServerResolver(); r != nil {
+		return r.LookupHost(ctx, host)
 	}
 	return net.DefaultResolver.LookupHost(ctx, host)
 }

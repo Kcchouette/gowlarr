@@ -68,13 +68,14 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 	}
 
 	// Native Newznab configs have no cached definition: reuse the native
-	// client so the configured proxy/DNS overrides apply to the NZB fetch.
+	// client so the configured proxy applies to the NZB fetch (custom DNS
+	// servers are installed globally via netutil).
 	// Newznab enclosure URLs embed the API key, so no auth headers are
 	// needed (the resolver attaches them only to the trusted host anyway).
 	if cfg.DefinitionID == store.NewznabDefinitionID {
 		client, err := newznab.NewWithTransport(cfg.ID, cfg.ID,
 			cfg.Settings["baseurl"], cfg.Settings["apikey"],
-			effectiveProxyURL(cfg.ProxyURL, s.cfg), s.cfg.DNSOverrides)
+			effectiveProxyURL(cfg.ProxyURL, s.cfg))
 		if err != nil {
 			slog.Warn("download: building native newznab client, falling back to default client", "indexer_id", indexerID, "err", err)
 			return defaultClient, nil
@@ -94,9 +95,10 @@ func (s *DownloadService) buildClient(indexerID string) (interface {
 		return defaultClient, nil
 	}
 
-	// Unlike the search/test paths, download does NOT apply DNS overrides or
-	// the browser UA mask, and does not wrap FlareSolverr — this call-site
-	// behavior is preserved deliberately (see clientOptions). Login stays
+	// Unlike the search/test paths, download does NOT apply per-host pinning,
+	// the browser UA mask, or FlareSolverr — this call-site behavior is
+	// preserved deliberately (see clientOptions). The global dns_servers
+	// policy still applies (applyDNSServers is unconditional). Login stays
 	// lazy in the cardigann engine, so no provider is constructed here: the
 	// resolver only needs the HTTP client (with its shared cookie jar) plus
 	// the definition-derived auth headers below.

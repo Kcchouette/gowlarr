@@ -68,9 +68,9 @@ func openStore() (*store.Store, config.Config, error) {
 	if !verboseFlag && cfg.LogLevel != "" {
 		golog.SetupLogger(cfg.LogLevel, false)
 	}
-	// Install DNS overrides globally so SSRF validation (netutil.ValidateURL)
-	// resolves overridden hostnames before the dial.
-	netutil.SetDNSOverrides(cfg.DNSOverrides)
+	// Install custom DNS servers globally so dial paths and SSRF validation
+	// (netutil.ValidateURL) resolve through them.
+	netutil.SetDNSServers(cfg.DNSServers)
 	st, err := store.Open(cfg.DatabasePath)
 	if err != nil {
 		return nil, config.Config{}, fmt.Errorf("opening store: %w", err)
