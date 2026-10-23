@@ -105,6 +105,13 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 	if params.ResolveLinks {
 		releases = s.resolveLinks(ctx, providers, releases)
 	}
+	// After resolveLinks: the download chain can observe a rotation the
+	// search itself never hit (e.g. a stale stored link that redirects).
+	for _, p := range providers {
+		if ra, ok := p.(rotationAware); ok {
+			persistIfRotated(s.store, ra)
+		}
+	}
 	if params.Protocol != "" {
 		filtered := releases[:0]
 		for _, r := range releases {

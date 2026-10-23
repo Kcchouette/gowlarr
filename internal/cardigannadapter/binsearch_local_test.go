@@ -120,10 +120,10 @@ func TestLocalBinsearchDefinition_Search(t *testing.T) {
 	if first.Title != `Example "Show" S01E01` {
 		t.Errorf("title = %q (htmldecode)", first.Title)
 	}
-	if first.DownloadLink != "/nzb?id=dG9rZW4x" {
+	if first.DownloadLink != server.URL+"/nzb?id=dG9rZW4x" {
 		t.Errorf("download = %q", first.DownloadLink)
 	}
-	if first.Details != "/details/dG9rZW4x" {
+	if first.Details != server.URL+"/details/dG9rZW4x" {
 		t.Errorf("details = %q", first.Details)
 	}
 	if first.PublishDate.IsZero() {
@@ -138,7 +138,7 @@ func TestLocalBinsearchDefinition_Search(t *testing.T) {
 	if second.Title != "Example Show S01E02" {
 		t.Errorf("second title = %q", second.Title)
 	}
-	if second.DownloadLink != "/nzb?id=dG9rZW4y" {
+	if second.DownloadLink != server.URL+"/nzb?id=dG9rZW4y" {
 		t.Errorf("second download = %q", second.DownloadLink)
 	}
 }
