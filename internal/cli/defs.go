@@ -169,23 +169,10 @@ func newDefsShowCmd() *cobra.Command {
 	return cmd
 }
 
-// localDefsDir returns the repo-local definitions directory: first
-// ./definitions-local relative to the working directory, then relative to
-// the executable (so an installed binary still finds the repo's local defs).
+// localDefsDir returns the repo-local definitions directory (delegates to
+// the service layer, which owns the path discovery).
 func localDefsDir() string {
-	if wd, err := os.Getwd(); err == nil {
-		dir := filepath.Join(wd, "definitions-local")
-		if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
-			return dir
-		}
-	}
-	if exe, err := os.Executable(); err == nil {
-		dir := filepath.Join(filepath.Dir(exe), "definitions-local")
-		if info, statErr := os.Stat(dir); statErr == nil && info.IsDir() {
-			return dir
-		}
-	}
-	return ""
+	return service.LocalDefsDir()
 }
 
 func methodOrNone(method string) string {

@@ -222,9 +222,10 @@ func TestProvider_SkipSearchDownloadAndResolve(t *testing.T) {
 	if len(releases) != 1 {
 		t.Fatalf("expected 1 release, got %d", len(releases))
 	}
-	// Raw row download link kept; the chain did not run.
-	if releases[0].DownloadLink != "./viewtopic.php?t=1" {
-		t.Errorf("DownloadLink = %q, want the raw row link ./viewtopic.php?t=1", releases[0].DownloadLink)
+	// Raw row download link kept (absolutized against the base by the
+	// engine, v0.7.0); the chain did not run.
+	if releases[0].DownloadLink != server.URL+"/viewtopic.php?t=1" {
+		t.Errorf("DownloadLink = %q, want the raw row link %q", releases[0].DownloadLink, server.URL+"/viewtopic.php?t=1")
 	}
 	if releases[0].Unlocked {
 		t.Error("release must not be unlocked when the chain did not run")
@@ -443,7 +444,7 @@ func TestForumDefinition_Search(t *testing.T) {
 	}
 
 	rel := releases[0]
-	if rel.DownloadLink != "showthread.php?tid=10&highlight=tsundere" {
+	if rel.DownloadLink != server.URL+"/showthread.php?tid=10&highlight=tsundere" {
 		t.Errorf("DownloadLink = %q, want the raw thread URL", rel.DownloadLink)
 	}
 	want := time.Date(2026, 5, 11, 16, 20, 0, 0, time.UTC)

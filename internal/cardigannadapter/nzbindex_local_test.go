@@ -135,7 +135,7 @@ func TestLocalNZBIndexDefinition_Search(t *testing.T) {
 	if first.Size != 3177685 {
 		t.Errorf("size = %d, want 3177685", first.Size)
 	}
-	if first.DownloadLink != "/download/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.nzb" {
+	if first.DownloadLink != server.URL+"/download/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.nzb" {
 		t.Errorf("download = %q", first.DownloadLink)
 	}
 	wantDate := time.Unix(1791735048, 0).UTC()
@@ -147,7 +147,7 @@ func TestLocalNZBIndexDefinition_Search(t *testing.T) {
 	if releases[1].Title != "Example.Show.S01E02.720p.WEB" {
 		t.Errorf("second title = %q", releases[1].Title)
 	}
-	if releases[1].DownloadLink != "/download/ffffffff-0000-1111-2222-333333333333.nzb" {
+	if releases[1].DownloadLink != server.URL+"/download/ffffffff-0000-1111-2222-333333333333.nzb" {
 		t.Errorf("second download = %q", releases[1].DownloadLink)
 	}
 }

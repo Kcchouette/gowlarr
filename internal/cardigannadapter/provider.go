@@ -23,6 +23,19 @@ func NewProvider(inner *cardigannengine.Provider) *Provider {
 func (p *Provider) ID() string   { return p.inner.ID() }
 func (p *Provider) Name() string { return p.inner.Name() }
 
+// EffectiveBaseURL reports the base the engine is currently resolving
+// against (configured Links[0], or the origin observed after a
+// cross-origin redirect). Empty when unknown.
+func (p *Provider) EffectiveBaseURL() string { return p.inner.EffectiveBaseURL() }
+
+// ConfiguredBaseURL reports the definition's configured base (Links[0]).
+func (p *Provider) ConfiguredBaseURL() string {
+	if links := p.inner.Def().Links; len(links) > 0 {
+		return links[0]
+	}
+	return ""
+}
+
 func (p *Provider) Protocol() model.Protocol {
 	return toModelProtocol(p.inner.Protocol(), p.inner.ID(), p.inner.Name())
 }
@@ -59,13 +72,15 @@ func (p *Provider) ResolveDownloadLink(ctx context.Context, rel model.ReleaseInf
 	if err != nil {
 		return rel, err
 	}
-	// The engine returns the raw href extracted from the chain's response
-	// (e.g. "attachment.php?aid=1"), which gowlarr's download resolver would
-	// reject; absolutize against the definition base URL (== the provider
-	// base URL in production).
-	base := ""
-	if links := p.inner.Def().Links; len(links) > 0 {
-		base = links[0]
+	// The engine usually returns an absolute URL already (v0.7.0
+	// absolutization against the effective base). The fallback below covers
+	// a still-raw href (e.g. "attachment.php?aid=1"): resolve against the
+	// effective base, falling back to the configured Links[0].
+	base := p.inner.EffectiveBaseURL()
+	if base == "" {
+		if links := p.inner.Def().Links; len(links) > 0 {
+			base = links[0]
+		}
 	}
 	rel.DownloadLink = absolutizeLink(resolved.DownloadLink, base)
 	rel.InfoHash = resolved.InfoHash
