@@ -326,3 +326,22 @@ func TestClient_Search_APIEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// TestClient_Search_EmptyAPIKeyOmitsParam covers Spotweb-style public Newznab
+// endpoints: an empty key must omit the apikey query parameter entirely
+// (an empty apikey= is treated as an invalid key).
+func TestClient_Search_EmptyAPIKeyOmitsParam(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := r.URL.Query()["apikey"]; ok {
+			t.Errorf("expected apikey to be omitted, got %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		w.Write([]byte(fixtureRSS))
+	}))
+	defer server.Close()
+
+	client := NewWithOverrides("spotweb", "Spotweb", server.URL, "", nil)
+	if _, err := client.Search(context.Background(), search.Query{Keywords: "ubuntu"}); err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+}

@@ -220,7 +220,11 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]model.ReleaseInf
 		searchType = SearchTypeSearch
 	}
 	params.Set("t", searchType)
-	params.Set("apikey", c.APIKey)
+	// Spotweb-style public Newznab endpoints answer only when the apikey
+	// parameter is omitted; an empty apikey= is treated as invalid.
+	if c.APIKey != "" {
+		params.Set("apikey", c.APIKey)
+	}
 	if q.Keywords != "" {
 		params.Set("q", q.Keywords)
 	}

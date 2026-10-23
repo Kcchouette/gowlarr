@@ -68,10 +68,9 @@ func newznabProviderFromConfig(cfg store.IndexerConfig, appCfg config.Config) (s
 	if baseURL == "" {
 		return nil, fmt.Errorf("newznab indexer %s: missing baseurl setting", cfg.ID)
 	}
+	// apikey is optional: public Spotweb instances reject an empty apikey=
+	// and only answer when the parameter is omitted (client.Search omits it).
 	apiKey := cfg.Settings["apikey"]
-	if apiKey == "" {
-		return nil, fmt.Errorf("newznab indexer %s: missing apikey setting", cfg.ID)
-	}
 	return newznab.NewWithTransport(cfg.ID, cfg.ID, baseURL, apiKey, effectiveProxyURL(cfg.ProxyURL, appCfg), appCfg.DNSOverrides)
 }
 

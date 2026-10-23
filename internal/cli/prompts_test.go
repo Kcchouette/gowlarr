@@ -491,3 +491,54 @@ func TestIndexerAddCmdInteractiveFillsSettings(t *testing.T) {
 		t.Errorf("persisted settings = %v, want username=alice password=s3cret", cfgs[0].Settings)
 	}
 }
+
+func TestPromptNewznabSettings_BaseURLOnlyNonTTY(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	def := newznabSyntheticDefinition()
+	var errBuf bytes.Buffer
+	// baseurl alone must succeed: apikey is optional for Spotweb.
+	got, err := promptNewznabSettings(def, map[string]string{"baseurl": "https://www.spotnzb.com"}, &errBuf)
+	if err != nil {
+		t.Fatalf("promptNewznabSettings: %v", err)
+	}
+	if got["baseurl"] != "https://www.spotnzb.com" {
+		t.Errorf("baseurl = %q", got["baseurl"])
+	}
+	if _, ok := got["apikey"]; ok {
+		t.Errorf("apikey should be absent when not provided, got %q", got["apikey"])
+	}
+}
+
+func TestPromptNewznabSettings_MissingBaseURLNonTTY(t *testing.T) {
+	old := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = old })
+
+	def := newznabSyntheticDefinition()
+	var errBuf bytes.Buffer
+	_, err := promptNewznabSettings(def, nil, &errBuf)
+	if err == nil {
+		t.Fatal("expected error when baseurl is missing in non-TTY")
+	}
+	if !strings.Contains(err.Error(), "baseurl") {
+		t.Errorf("error should mention baseurl: %v", err)
+	}
+}
+
+func TestPrintSettingsSummary_MasksNewznabAPIKey(t *testing.T) {
+	def := newznabSyntheticDefinition()
+	var buf bytes.Buffer
+	printSettingsSummary(def, map[string]string{
+		"baseurl": "https://www.spotnzb.com",
+		"apikey":  "sekret-key",
+	}, &buf)
+	if strings.Contains(buf.String(), "sekret-key") {
+		t.Errorf("apikey leaked in summary: %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "*****") {
+		t.Errorf("expected masked apikey in summary: %q", buf.String())
+	}
+}

@@ -79,7 +79,7 @@ links and file hosts (no automatic download).`,
 	}
 
 	cmd.Flags().StringVar(&newznabURL, "newznab-url", "", "Base URL of a generic Newznab indexer")
-	cmd.Flags().StringVar(&newznabAPIKey, "newznab-apikey", "", "API key of the generic Newznab indexer")
+	cmd.Flags().StringVar(&newznabAPIKey, "newznab-apikey", "", "API key of the generic Newznab indexer (optional; omit for open Spotweb instances)")
 	cmd.Flags().StringVar(&newznabName, "newznab-name", "", "Display name of the generic Newznab indexer")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	cmd.Flags().BoolVar(&linksOutput, "links", false, "Show the direct download links and file hosts (DDL/streaming)")
