@@ -321,7 +321,13 @@ func appendLegacyFlow(lines []string, legacySeq *yaml.Node, oldURL string) ([]st
 		return lines, false
 	}
 	line := lines[row]
-	closeIdx := strings.LastIndex(line, "]")
+	// Restrict the bracket search to the code part of the line: a "]"
+	// inside a trailing comment must not be mistaken for the closer.
+	code := line
+	if hash := strings.Index(line, " #"); hash >= 0 {
+		code = line[:hash]
+	}
+	closeIdx := strings.LastIndex(code, "]")
 	if closeIdx < 0 {
 		slog.Warn("domain rotation history skipped: legacylinks flow closing bracket not on key line")
 		return lines, false

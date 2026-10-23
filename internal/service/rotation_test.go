@@ -149,9 +149,6 @@ func TestRewriteLinksFirstEntry_RotatedFromStripped(t *testing.T) {
 				t.Fatalf("rewritten line not found:\n%s", newRaw)
 			}
 			rest := ""
-			if idx := strings.Index(rewrittenLine, `"`); idx >= 0 {
-				_ = idx
-			}
 			// Rest = everything after the (unquoted) token.
 			unquoted := "https://example.com/"
 			if i := strings.Index(rewrittenLine, unquoted); i >= 0 {
@@ -223,6 +220,19 @@ func TestRewriteLinksFirstEntry_LegacyLinksFlow(t *testing.T) {
 	}
 	if len(def.LegacyLinks) != 3 {
 		t.Errorf("legacylinks = %v", def.LegacyLinks)
+	}
+
+	// A "]" inside a trailing comment must not be mistaken for the closer.
+	inComment := strings.Replace(fixtureYAML,
+		"search:",
+		"legacylinks: [https://a.example/] # see [docs]\nsearch:",
+		1)
+	newRaw3, ok := rewriteLinksFirstEntry(inComment, "https://example.com")
+	if !ok {
+		t.Fatal("rewrite refused")
+	}
+	if !strings.Contains(newRaw3, "legacylinks: [https://a.example/, https://example.org/] # see [docs]") {
+		t.Errorf("comment bracket defeated the search:\n%s", newRaw3)
 	}
 
 	// IPv6 item defeats the bracket search: history skipped, rewrite kept.
