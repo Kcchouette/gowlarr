@@ -3,7 +3,7 @@ module github.com/Kcchouette/gowlarr
 go 1.27.0
 
 require (
-	github.com/Kcchouette/cardigann-go v0.6.1
+	github.com/Kcchouette/cardigann-go v0.7.0
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/spf13/cobra v1.10.2
@@ -45,5 +45,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
-
-replace github.com/Kcchouette/cardigann-go => /home/jeremy/Developpment/GitHub/cardigann-go/.worktrees/effective-base
