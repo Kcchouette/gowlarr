@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -50,6 +51,7 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	}
 	cfg.LogLevel = "debug"
 	cfg.HTTPProxy = "http://proxy.invalid:8080"
+	cfg.DNSServers = []string{"1.1.1.1", "1.0.0.1"}
 
 	if err := cfg.Save(); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -67,6 +69,36 @@ func TestSaveAndLoad_RoundTrip(t *testing.T) {
 	}
 	if loaded.DatabasePath != cfg.DatabasePath {
 		t.Errorf("expected database path to survive round trip: %q vs %q", loaded.DatabasePath, cfg.DatabasePath)
+	}
+	if len(loaded.DNSServers) != 2 || loaded.DNSServers[0] != "1.1.1.1" || loaded.DNSServers[1] != "1.0.0.1" {
+		t.Errorf("expected dns_servers to survive round trip, got %v", loaded.DNSServers)
+	}
+}
+
+func TestLoad_IgnoresRemovedDNSOverrides(t *testing.T) {
+	isolateUserDirs(t)
+
+	path, err := Path()
+	if err != nil {
+		t.Fatalf("Path: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	legacy := `{"log_level": "warn", "dns_overrides": {"tracker.example": "1.2.3.4"}}`
+	if err := os.WriteFile(path, []byte(legacy), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatalf("Load with legacy dns_overrides: %v", err)
+	}
+	if loaded.LogLevel != "warn" {
+		t.Errorf("expected log level 'warn', got %q", loaded.LogLevel)
+	}
+	if loaded.DNSServers != nil {
+		t.Errorf("expected nil DNSServers from legacy config, got %v", loaded.DNSServers)
 	}
 }
 

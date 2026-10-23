@@ -13,9 +13,11 @@
 //
 // One documented exception: DownloadService.buildClient warns and falls back
 // to a default HTTP client. The user asked for one specific download, so a
-// silent fallback (no proxy, no DNS overrides, no cookies) degrades the
-// download but is preserved for behavior compatibility; it is a candidate for
-// a future fail-loud decision.
+// silent fallback (no proxy, no per-host pinning, no cookies; the bare
+// default client also uses system DNS) degrades the download but is
+// preserved for behavior compatibility; it is a candidate for a future
+// fail-loud decision. The built (non-fallback) clients still honor the
+// global dns_servers policy.
 package service
 
 import (
@@ -40,21 +42,24 @@ import (
 // return 503 to Go's default User-Agent.
 const browserUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
-// applyDNSOverrides clones the client's transport with a DialContext that
-// forces DNS resolution of the overridden hostnames to fixed IPs (equivalent
-// to curl's --resolve). It only acts when overrides are non-empty and the
-// transport is a plain *http.Transport; otherwise it leaves the client
-// untouched (FlareSolverr wraps the transport afterwards when configured).
-func applyDNSOverrides(client *httpclient.IndexerClient, overrides map[string]string) {
-	if len(overrides) == 0 {
+// applyDNSServers clones the client's transport and installs a DialContext
+// that resolves through the configured DNS servers (netutil.DialContextFor).
+// It only acts when servers are configured and the transport is a plain
+// *http.Transport without a custom DialContext. A non-nil DialContext
+// means a SOCKS5 proxy path (cardigann-go buildTransport): replacing it
+// would send traffic direct and bypass the proxy, so it is left untouched
+// (SOCKS5 resolves hostnames remotely anyway). FlareSolverr wraps the
+// transport afterwards when configured.
+func applyDNSServers(client *httpclient.IndexerClient) {
+	if !netutil.HasDNSServers() {
 		return
 	}
 	tr, ok := client.HTTPClient().Transport.(*http.Transport)
-	if !ok {
+	if !ok || tr.DialContext != nil {
 		return
 	}
 	cloned := tr.Clone()
-	cloned.DialContext = netutil.OverrideDialContext(cloned.DialContext, overrides)
+	cloned.DialContext = netutil.DialContextFor()
 	// A custom DialContext disables HTTP/2 by default; re-enable it so
 	// Cloudflare-fronted hosts (e.g. a private tracker) still negotiate properly.
 	cloned.ForceAttemptHTTP2 = true
@@ -71,7 +76,7 @@ func newznabProviderFromConfig(cfg store.IndexerConfig, appCfg config.Config) (s
 	// apikey is optional: public Spotweb instances reject an empty apikey=
 	// and only answer when the parameter is omitted (client.Search omits it).
 	apiKey := cfg.Settings["apikey"]
-	return newznab.NewWithTransport(cfg.ID, cfg.ID, baseURL, apiKey, effectiveProxyURL(cfg.ProxyURL, appCfg), appCfg.DNSOverrides)
+	return newznab.NewWithTransport(cfg.ID, cfg.ID, baseURL, apiKey, effectiveProxyURL(cfg.ProxyURL, appCfg))
 }
 
 // clientOptions captures the transport-level differences between the code
@@ -82,16 +87,15 @@ type clientOptions struct {
 	// flareClient, when non-nil, wraps the transport with a FlareSolverr
 	// transport to bypass Cloudflare challenges.
 	flareClient *flaresolverr.Client
-	// applyDNS forces DNS resolution of overridden hostnames to fixed IPs.
-	applyDNS bool
 	// maskUserAgent swaps the default Go User-Agent for a browser one, which
 	// some WAF-protected sites require to avoid a 503.
 	maskUserAgent bool
 }
 
 // newIndexerHTTPClient builds the HTTP client shared by every Cardigann code
-// path: cookie persistence, effective proxy, then the optional DNS override,
-// UA mask and FlareSolverr wrapper applied in that exact order.
+// path: cookie persistence, effective proxy, then the custom DNS servers
+// (when configured), UA mask and FlareSolverr wrapper applied in that exact
+// order.
 func newIndexerHTTPClient(st *store.Store, appCfg config.Config, cfg store.IndexerConfig, opts clientOptions) (*httpclient.IndexerClient, error) {
 	client, err := httpclient.New(httpclient.Options{
 		IndexerID: cfg.ID,
@@ -102,11 +106,9 @@ func newIndexerHTTPClient(st *store.Store, appCfg config.Config, cfg store.Index
 		return nil, fmt.Errorf("building http client: %w", err)
 	}
 
-	// DNS overrides must be applied before the FlareSolverr transport wraps
-	// the underlying transport (see applyDNSOverrides).
-	if opts.applyDNS {
-		applyDNSOverrides(client, appCfg.DNSOverrides)
-	}
+	// Custom DNS servers must be applied before the FlareSolverr transport
+	// wraps the underlying transport (see applyDNSServers).
+	applyDNSServers(client)
 
 	if opts.maskUserAgent {
 		client.HTTPClient().Transport = httpclient.WrapUserAgent(client.HTTPClient().Transport, browserUA)
@@ -173,7 +175,6 @@ func BuildConfiguredProviders(st *store.Store, cfg config.Config) ([]search.Prov
 
 		client, err := newIndexerHTTPClient(st, cfg, idxCfg, clientOptions{
 			flareClient:   flareClient,
-			applyDNS:      true,
 			maskUserAgent: true,
 		})
 		if err != nil {
@@ -203,7 +204,6 @@ func buildIndexerProvider(st *store.Store, appCfg config.Config, cfg store.Index
 		return nil, fmt.Errorf("definition %q has no links[]", cfg.DefinitionID)
 	}
 	client, err := newIndexerHTTPClient(st, appCfg, cfg, clientOptions{
-		applyDNS:      true,
 		maskUserAgent: true,
 	})
 	if err != nil {

@@ -20,10 +20,15 @@ type Config struct {
 	LogLevel string `json:"log_level"`
 	// HTTPProxy is a default HTTP proxy (optional, can be overridden per indexer).
 	HTTPProxy string `json:"http_proxy,omitempty"`
-	// DNSOverrides maps hostnames to fixed IP addresses, applied at dial time
-	// (equivalent to curl's --resolve). Useful when the system DNS cannot
-	// resolve a configured indexer domain.
-	DNSOverrides map[string]string `json:"dns_overrides,omitempty"`
+	// DNSServers, when non-empty, forces DNS resolution through these servers
+	// for all outbound connections (dial + SSRF validation) using Go's
+	// pure-Go resolver. Accepts IPs or host:port (default port 53); bracketed
+	// and bare IPv6 forms are normalized to [v6]:53. Empty = system resolver.
+	// Replaces the former dns_overrides map: resolution stays dynamic, so
+	// Cloudflare IP rotation needs no config update. Ignored for destinations
+	// resolved by an HTTP/SOCKS5 proxy, and for SOCKS5 proxied Cardigann
+	// clients (remote resolution).
+	DNSServers []string `json:"dns_servers,omitempty"`
 	// FlareSolverrURL is the FlareSolverr service URL (optional, post-MVP).
 	FlareSolverrURL string `json:"flaresolverr_url,omitempty"`
 	// MaxResultsPerIndexer caps the number of results a single indexer can

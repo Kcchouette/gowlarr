@@ -52,11 +52,13 @@ var sharedTransport = &http.Transport{
 	IdleConnTimeout:     90 * time.Second,
 }
 
-// NewWithOverrides builds a generic Newznab client, optionally forcing DNS
-// resolution of specific hostnames to fixed IPs (equivalent to curl's
-// --resolve). A nil or empty overrides map behaves exactly like New.
-func NewWithOverrides(id, name, baseURL, apiKey string, overrides map[string]string) *Client {
-	return newClient(id, name, baseURL, apiKey, transportWithOverrides(overrides))
+// New builds a generic Newznab client. The shared transport is always
+// cloned (never mutated); when custom DNS servers are configured, a
+// resolver-backed DialContext is installed on the clone.
+func New(id, name, baseURL, apiKey string) *Client {
+	transport := cloneSharedTransport()
+	transportWithDNSServers(transport)
+	return newClient(id, name, baseURL, apiKey, transport)
 }
 
 // cloneSharedTransport returns a per-client copy of the shared transport.
@@ -73,15 +75,15 @@ func cloneSharedTransport() *http.Transport {
 	return transport
 }
 
-// transportWithOverrides clones the shared transport, optionally forcing DNS
-// resolution of specific hostnames to fixed IPs. The shared transport is
-// never mutated: each client gets its own clone.
-func transportWithOverrides(overrides map[string]string) *http.Transport {
-	transport := cloneSharedTransport()
-	if len(overrides) > 0 {
-		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
+// transportWithDNSServers installs the custom-resolver DialContext when
+// DNS servers are configured. No-op otherwise. Must not be applied on
+// top of a SOCKS5 DialContext (would bypass the proxy).
+func transportWithDNSServers(tr *http.Transport) {
+	if !netutil.HasDNSServers() {
+		return
 	}
-	return transport
+	tr.DialContext = netutil.DialContextFor()
+	tr.ForceAttemptHTTP2 = true // custom DialContext disables HTTP/2 by default
 }
 
 // apiEndpoint returns the API endpoint for a base URL: the standard Newznab
@@ -110,9 +112,11 @@ func newClient(id, name, baseURL, apiKey string, transport *http.Transport) *Cli
 }
 
 // NewWithTransport builds a generic Newznab client honoring an optional
-// per-indexer proxy (http://, https://, socks5://) and DNS overrides. The
-// proxy scheme is validated; an unsupported scheme returns an error.
-func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[string]string) (*Client, error) {
+// per-indexer proxy (http://, https://, socks5://). The proxy scheme is
+// validated; an unsupported scheme returns an error. Custom DNS servers
+// (netutil) apply to the direct path and to the HTTP-proxy hostname, but
+// not on top of a SOCKS5 dialer (remote resolution, proxy preserved).
+func NewWithTransport(id, name, baseURL, apiKey, proxyURL string) (*Client, error) {
 	transport := cloneSharedTransport()
 
 	if proxyURL != "" {
@@ -123,6 +127,9 @@ func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[
 		switch u.Scheme {
 		case "http", "https":
 			transport.Proxy = http.ProxyURL(u)
+			// The destination is resolved by the HTTP proxy, but the proxy
+			// hostname itself is dialed directly — honor custom DNS servers.
+			transportWithDNSServers(transport)
 		case "socks5":
 			transport.Proxy = nil // the socks5 dialer IS the proxy path; an env proxy must not also apply
 			dialer, err := proxy.FromURL(u, proxy.Direct)
@@ -130,7 +137,8 @@ func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[
 				return nil, fmt.Errorf("building socks5 dialer: %w", err)
 			}
 			// Prefer the context-aware dialer so request deadlines propagate
-			// to the SOCKS5 handshake; fall back to the plain Dial.
+			// to the SOCKS5 handshake; fall back to the plain Dial. No
+			// DNS-server DialContext on top: it would bypass the proxy.
 			if cd, ok := dialer.(proxy.ContextDialer); ok {
 				transport.DialContext = cd.DialContext
 			} else {
@@ -141,14 +149,8 @@ func NewWithTransport(id, name, baseURL, apiKey, proxyURL string, overrides map[
 		default:
 			return nil, fmt.Errorf("unsupported proxy scheme %q (only http/https/socks5)", u.Scheme)
 		}
-	}
-
-	// Overrides are applied last so they compose on top of the socks5
-	// dialer: an overridden hostname dials the fixed IP, still through the
-	// proxy when one is configured (OverrideDialContext wraps, not replaces,
-	// the base dialer).
-	if len(overrides) > 0 {
-		transport.DialContext = netutil.OverrideDialContext(transport.DialContext, overrides)
+	} else {
+		transportWithDNSServers(transport)
 	}
 
 	return newClient(id, name, baseURL, apiKey, transport), nil

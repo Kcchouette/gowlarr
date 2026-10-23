@@ -40,6 +40,27 @@ gowlarr config init
 Creates the default configuration file (`~/.config/gowlarr/config.json` or
 `%APPDATA%/gowlarr/config.json` on Windows) and the SQLite database.
 
+#### Custom DNS servers
+
+By default, Gowlarr resolves indexer domains through the system resolver.
+If your ISP DNS is unreliable or poisons results (common with
+Cloudflare-fronted private trackers), set explicit DNS servers in
+`config.json`:
+
+```json
+{
+  "dns_servers": ["1.1.1.1", "1.0.0.1"]
+}
+```
+
+All outbound name resolution (indexer connections and the SSRF
+pre-check) then queries these servers — starting each attempt at a
+rotating server, with sequential failover on connect errors — using
+Go's pure-Go resolver, so DNS-side IP changes need no config update.
+Leave empty (or omit) for system DNS. With an HTTP or SOCKS5 proxy,
+destination hostnames are resolved by the proxy instead (for SOCKS5
+the proxy hostname itself is also resolved by the system).
+
 ### Synchronize indexer definitions
 
 ```bash

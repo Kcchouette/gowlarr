@@ -145,7 +145,6 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 	}
 
 	client, err := newIndexerHTTPClient(s.store, s.cfg, cfg, clientOptions{
-		applyDNS:      true,
 		maskUserAgent: true,
 	})
 	if err != nil {

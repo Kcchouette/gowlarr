@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/Kcchouette/gowlarr/internal/model"
+	"github.com/Kcchouette/gowlarr/internal/netutil"
 	"github.com/Kcchouette/gowlarr/internal/search"
 )
 
@@ -47,7 +48,7 @@ func TestClient_Search_ParsesRSSAndAttrs(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "mykey", nil)
+	client := New("test-usenet", "TestUsenet", server.URL, "mykey")
 	releases, err := client.Search(context.Background(), search.Query{Keywords: "some show"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -106,7 +107,7 @@ func TestClient_Search_PrefersEnclosure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "key", nil)
+	client := New("test-usenet", "TestUsenet", server.URL, "key")
 	releases, err := client.Search(context.Background(), search.Query{Keywords: "example"})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -128,7 +129,7 @@ func TestClient_Search_HTTPError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "badkey", nil)
+	client := New("test-usenet", "TestUsenet", server.URL, "badkey")
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x"})
 	if err == nil {
 		t.Fatal("expected error on HTTP 401")
@@ -144,7 +145,7 @@ func TestClient_Search_CategoriesInRequest(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "key", nil)
+	client := New("test-usenet", "TestUsenet", server.URL, "key")
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x", Categories: []int{2000, 2010}})
 	if err != nil {
 		t.Fatalf("Search: %v", err)
@@ -161,7 +162,7 @@ func TestClient_Search_ErrorXML(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("test-usenet", "TestUsenet", server.URL, "badkey", nil)
+	client := New("test-usenet", "TestUsenet", server.URL, "badkey")
 	_, err := client.Search(context.Background(), search.Query{Keywords: "x"})
 	if err == nil {
 		t.Fatal("expected error for <error> response")
@@ -175,7 +176,7 @@ func TestClient_Search_ErrorXML(t *testing.T) {
 }
 
 func TestNewWithTransport_HTTPProxy(t *testing.T) {
-	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080", nil)
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080")
 	if err != nil {
 		t.Fatalf("NewWithTransport: %v", err)
 	}
@@ -197,7 +198,7 @@ func TestNewWithTransport_HTTPProxy(t *testing.T) {
 }
 
 func TestNewWithTransport_SOCKS5(t *testing.T) {
-	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "socks5://proxy.example:1080", nil)
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "socks5://proxy.example:1080")
 	if err != nil {
 		t.Fatalf("NewWithTransport: %v", err)
 	}
@@ -214,7 +215,7 @@ func TestNewWithTransport_SOCKS5(t *testing.T) {
 }
 
 func TestNewWithTransport_UnsupportedScheme(t *testing.T) {
-	_, err := NewWithTransport("id", "name", "http://example.invalid", "key", "ftp://proxy.example", nil)
+	_, err := NewWithTransport("id", "name", "http://example.invalid", "key", "ftp://proxy.example")
 	if err == nil {
 		t.Fatal("expected error for unsupported proxy scheme")
 	}
@@ -223,8 +224,11 @@ func TestNewWithTransport_UnsupportedScheme(t *testing.T) {
 	}
 }
 
-func TestNewWithTransport_DNSOverrides(t *testing.T) {
-	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "", map[string]string{"example.invalid": "127.0.0.1"})
+func TestNewWithTransport_DNSServers(t *testing.T) {
+	netutil.SetDNSServers([]string{"127.0.0.1:53"})
+	t.Cleanup(func() { netutil.SetDNSServers(nil) })
+
+	c, err := NewWithTransport("id", "name", "http://example.invalid", "key", "")
 	if err != nil {
 		t.Fatalf("NewWithTransport: %v", err)
 	}
@@ -233,15 +237,32 @@ func TestNewWithTransport_DNSOverrides(t *testing.T) {
 		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
 	}
 	if tr.DialContext == nil {
-		t.Error("expected DialContext with DNS overrides")
+		t.Error("expected DialContext with custom DNS servers")
 	}
 	if !tr.ForceAttemptHTTP2 {
 		t.Error("expected ForceAttemptHTTP2 when a custom DialContext is set")
 	}
 
-	// The shared transport must not be mutated: a client without overrides
-	// keeps a nil DialContext.
-	plain, _ := NewWithTransport("id2", "name", "http://example.invalid", "key", "", nil)
+	// SOCKS5 must keep its own DialContext: replacing it would bypass the
+	// proxy. Remote resolution means custom DNS servers do not apply.
+	socks, err := NewWithTransport("id-socks", "name", "http://example.invalid", "key", "socks5://proxy.example:1080")
+	if err != nil {
+		t.Fatalf("NewWithTransport socks5: %v", err)
+	}
+	socksTR, ok := socks.HTTPClient.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", socks.HTTPClient.Transport)
+	}
+	if socksTR.DialContext == nil {
+		t.Fatal("expected the socks5 DialContext to be preserved with custom DNS servers")
+	}
+
+	// Without DNS servers the shared transport must not be mutated.
+	netutil.SetDNSServers(nil)
+	plain, err := NewWithTransport("id2", "name", "http://example.invalid", "key", "")
+	if err != nil {
+		t.Fatalf("NewWithTransport: %v", err)
+	}
 	plainTR, ok := plain.HTTPClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", plain.HTTPClient.Transport)
@@ -252,7 +273,7 @@ func TestNewWithTransport_DNSOverrides(t *testing.T) {
 }
 
 func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
-	c := NewWithOverrides("id", "name", "http://example.invalid", "key", nil)
+	c := New("id", "name", "http://example.invalid", "key")
 	tr, ok := c.HTTPClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("expected *http.Transport, got %T", c.HTTPClient.Transport)
@@ -261,7 +282,7 @@ func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
 		t.Error("expected non-nil Proxy (env-var proxy preserved) without an explicit proxy")
 	}
 	if tr.DialContext != nil {
-		t.Error("expected nil DialContext without DNS overrides")
+		t.Error("expected nil DialContext without custom DNS servers")
 	}
 }
 
@@ -269,19 +290,19 @@ func TestNew_NoProxy_KeepsEnvProxyBehavior(t *testing.T) {
 // footgun: Clone() inherits the source's post-auto-setup TLSClientConfig
 // (ALPN h2) but not its TLSNextProto map, so without ForceAttemptHTTP2 the
 // clone advertises h2 in ALPN while reading the response as HTTP/1.1 —
-// every constructor must force it, whatever the proxy/override shape.
+// every constructor must force it, whatever the proxy/DNS-server shape.
 func TestNew_TransportsForceHTTP2(t *testing.T) {
-	plain, err := NewWithTransport("id", "name", "http://example.invalid", "key", "", nil)
+	plain, err := NewWithTransport("id", "name", "http://example.invalid", "key", "")
 	if err != nil {
 		t.Fatalf("NewWithTransport: %v", err)
 	}
-	proxied, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080", nil)
+	proxied, err := NewWithTransport("id", "name", "http://example.invalid", "key", "http://proxy.example:8080")
 	if err != nil {
 		t.Fatalf("NewWithTransport proxied: %v", err)
 	}
-	overrides := NewWithOverrides("id", "name", "http://example.invalid", "key", nil)
+	newC := New("id", "name", "http://example.invalid", "key")
 
-	for name, c := range map[string]*Client{"plain": plain, "proxied": proxied, "overrides": overrides} {
+	for name, c := range map[string]*Client{"plain": plain, "proxied": proxied, "new": newC} {
 		tr, ok := c.HTTPClient.Transport.(*http.Transport)
 		if !ok {
 			t.Fatalf("%s: expected *http.Transport, got %T", name, c.HTTPClient.Transport)
@@ -319,7 +340,7 @@ func TestClient_Search_APIEndpoint(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewWithOverrides("id", "name", server.URL+tc.baseURLSuffix, "key", nil)
+			client := New("id", "name", server.URL+tc.baseURLSuffix, "key")
 			if _, err := client.Search(context.Background(), search.Query{Keywords: "x"}); err != nil {
 				t.Fatalf("Search: %v", err)
 			}
@@ -340,7 +361,7 @@ func TestClient_Search_EmptyAPIKeyOmitsParam(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewWithOverrides("spotweb", "Spotweb", server.URL, "", nil)
+	client := New("spotweb", "Spotweb", server.URL, "")
 	if _, err := client.Search(context.Background(), search.Query{Keywords: "ubuntu"}); err != nil {
 		t.Fatalf("Search: %v", err)
 	}

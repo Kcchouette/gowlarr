@@ -83,7 +83,7 @@ func (s *SearchService) Search(ctx context.Context, params SearchParams) (Search
 		if name == "" {
 			name = "newznab-generic"
 		}
-		providers = append(providers, newznab.NewWithOverrides(name, name, params.NewznabURL, params.NewznabAPIKey, s.cfg.DNSOverrides))
+		providers = append(providers, newznab.New(name, name, params.NewznabURL, params.NewznabAPIKey))
 	}
 
 	configured, err := BuildConfiguredProviders(s.store, s.cfg)
