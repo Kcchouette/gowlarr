@@ -192,14 +192,11 @@ func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
 
 	oldToken := line[col:tokenEnd]
 	unquoted := strings.Trim(oldToken, `"'`)
-	pathSuffix := ""
-	if u, err := url.Parse(unquoted); err == nil {
+	// Keep only the path: a query on links[0] would not survive an origin
+	// swap cleanly (Cardigann bases are bare origins in practice).
+	pathSuffix := "/"
+	if u, err := url.Parse(unquoted); err == nil && u.Path != "" {
 		pathSuffix = u.Path
-		if pathSuffix == "" {
-			pathSuffix = "/"
-		}
-	} else {
-		pathSuffix = "/"
 	}
 	// Preserve quoting style of the original token.
 	var newToken string
@@ -216,16 +213,12 @@ func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
 	// Replace an existing rotated-from note, else append one (block style only).
 	rotatedNote := " # rotated-from: " + oldOrigin
 	if idx := strings.Index(rest, "rotated-from:"); idx >= 0 {
-		// Keep any leading comment text before the note; drop through EOL note.
-		nl := strings.IndexByte(rest[idx:], '\n')
-		_ = nl // rest has no newline (we split on \n)
+		// Keep any user comment text before the note; replace the note itself.
 		before := rest[:idx]
-		// Preserve trailing user comment before our note if present.
-		rest = before + "rotated-from: " + oldOrigin
-		// rest already ends the line; ensure single-space prefix when empty.
-		if !strings.HasSuffix(before, " ") && before != "" {
-			rest = before + " rotated-from: " + oldOrigin
+		if before != "" && !strings.HasSuffix(before, " ") {
+			before += " "
 		}
+		rest = before + "rotated-from: " + oldOrigin
 	} else if strings.TrimSpace(rest) == "" {
 		rest = rotatedNote
 	} else if strings.HasPrefix(strings.TrimSpace(rest), "#") {
@@ -259,12 +252,19 @@ func scalarTokenEnd(line string, col int) int {
 		}
 		return len(line) // unterminated: treat to EOL
 	default:
+		end := len(line)
 		for i := col; i < len(line); i++ {
 			if line[i] == '#' && i > col && (line[i-1] == ' ' || line[i-1] == '\t') {
-				return i
+				end = i
+				break
 			}
 		}
-		return len(line)
+		// Plain scalars: drop trailing whitespace so it cannot leak into
+		// the rewritten token / path suffix.
+		for end > col && (line[end-1] == ' ' || line[end-1] == '\t') {
+			end--
+		}
+		return end
 	}
 }
 

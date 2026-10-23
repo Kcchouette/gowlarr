@@ -154,8 +154,9 @@ func (s *IndexerService) Test(ctx context.Context, id, version string) error {
 	provider := buildCardigannProvider(cfg, def, client)
 
 	_, err = provider.Search(ctx, search.Query{Keywords: "test"})
-	// Persist a domain rotation even when the search failed for a
-	// non-login reason: `indexer test` doubles as a rotation probe.
+	// Persist a domain rotation discovered by this probe. On a login
+	// failure nothing was observed (login does not observe redirects), so
+	// the persist is a no-op there by construction.
 	if ra, ok := provider.(rotationAware); ok {
 		persistIfRotated(s.store, ra)
 	}
