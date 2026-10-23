@@ -29,10 +29,25 @@ func NewDownloadService(st *store.Store, cfg config.Config) *DownloadService {
 }
 
 // Resolve resolves a search result into a downloadable artifact.
+//
+// For torrent/usenet Cardigann indexers it first runs the definition's
+// download chain (ResolveDownloadLink: download.before / magnet scrape on
+// the fiche) so `download` is the download-time counterpart of
+// `search --links`. Display-only protocols and already-resolved magnet
+// links skip the chain. The HTTP client for the final fetch is built after
+// the chain so cookies set during resolution are available.
 func (s *DownloadService) Resolve(ctx context.Context, resultID int64) (download.Artifact, error) {
 	release, err := s.store.GetResult(resultID)
 	if err != nil {
 		return download.Artifact{}, err
+	}
+
+	if release.Protocol != model.ProtocolDDL && release.Protocol != model.ProtocolStreaming &&
+		!strings.HasPrefix(release.DownloadLink, "magnet:") {
+		release, err = s.resolveChain(ctx, release)
+		if err != nil {
+			return download.Artifact{}, err
+		}
 	}
 
 	httpClient, authHeaders := s.buildClient(release.IndexerID)
@@ -44,6 +59,36 @@ func (s *DownloadService) Resolve(ctx context.Context, resultID int64) (download
 	}
 
 	return artifact, nil
+}
+
+// resolveChain runs the indexer definition's download.before chain on demand.
+// It is a no-op when the config/definition cannot be loaded (documented
+// DownloadService fallback) or the provider does not implement the chain
+// (native Newznab). A chain that fails returns an error: falling through to
+// a raw fetch of a fiche HTML page must not be silent.
+func (s *DownloadService) resolveChain(ctx context.Context, release model.ReleaseInfo) (model.ReleaseInfo, error) {
+	if release.IndexerID == "" {
+		return release, nil
+	}
+	cfg, err := s.store.GetIndexerConfig(release.IndexerID, nil)
+	if err != nil {
+		slog.Warn("download: loading indexer config for chain, using stored link", "indexer_id", release.IndexerID, "err", err)
+		return release, nil
+	}
+	provider, err := buildIndexerProvider(s.store, s.cfg, cfg)
+	if err != nil {
+		slog.Warn("download: building provider for chain, using stored link", "indexer_id", release.IndexerID, "err", err)
+		return release, nil
+	}
+	lr, ok := provider.(linkResolver)
+	if !ok {
+		return release, nil
+	}
+	resolved, err := lr.ResolveDownloadLink(ctx, release)
+	if err != nil {
+		return release, fmt.Errorf("resolving download chain for %q: %w", release.Title, err)
+	}
+	return resolved, nil
 }
 
 // GetRelease retrieves a search result by its ID.
