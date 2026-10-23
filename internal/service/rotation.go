@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 
@@ -70,7 +71,7 @@ func maybePersistRotation(st *store.Store, defID, configuredBase, effectiveBase 
 		// Upstream/synced definition: runtime rewrite only.
 		return
 	}
-	newRaw, ok := rewriteLinksFirstEntry(raw, effOrigin, cfgOrigin)
+	newRaw, ok := rewriteLinksFirstEntry(raw, effOrigin)
 	if !ok {
 		return
 	}
@@ -137,13 +138,17 @@ func findLocalDefinition(defID string) (string, string, bool) {
 
 // rewriteLinksFirstEntry locates the first scalar of the root-level links
 // sequence via yaml.v3 (comments/formatting preserved: only that scalar's
-// span is rewritten in the raw buffer) and replaces its origin with newOrigin.
+// span is rewritten in the raw buffer) and replaces its origin with
+// newOrigin. The previous base URL (the verbatim old token) is appended to
+// the standard Cardigann legacylinks list (best-effort: a failed history
+// insert logs a warning but the links[0] rewrite still applies). Notes of
+// the former inline "rotated-from:" trail are stripped from the rewritten
+// line.
 //
-// Guards (Warn + no write): flow-style collections (a trailing # comment
-// would comment out the closing bracket), multi-line scalars, unexpected
-// shapes. An existing line comment is preserved and the rotated-from note
-// is appended with " | ".
-func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
+// Guards (Warn + no write of links[0]): flow-style links collections (a
+// trailing # comment would comment out the closing bracket), multi-line
+// scalars, unexpected shapes.
+func rewriteLinksFirstEntry(raw, newOrigin string) (string, bool) {
 	var root yaml.Node
 	if err := yaml.Unmarshal([]byte(raw), &root); err != nil {
 		slog.Warn("domain rotation persist skipped: YAML parse failed", "err", err)
@@ -154,11 +159,17 @@ func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
 		return "", false
 	}
 	mapping := root.Content[0]
-	var linksSeq *yaml.Node
+	var linksSeq, legacySeq *yaml.Node
+	linksKeyIdx := -1
 	for i := 0; i+1 < len(mapping.Content); i += 2 {
-		if mapping.Content[i].Value == "links" && mapping.Content[i+1].Kind == yaml.SequenceNode {
-			linksSeq = mapping.Content[i+1]
-			break
+		switch mapping.Content[i].Value {
+		case "links":
+			if mapping.Content[i+1].Kind == yaml.SequenceNode {
+				linksSeq = mapping.Content[i+1]
+				linksKeyIdx = i
+			}
+		case "legacylinks":
+			legacySeq = mapping.Content[i+1]
 		}
 	}
 	if linksSeq == nil || linksSeq.Style == yaml.FlowStyle || len(linksSeq.Content) == 0 {
@@ -191,11 +202,11 @@ func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
 	}
 
 	oldToken := line[col:tokenEnd]
-	unquoted := strings.Trim(oldToken, `"'`)
+	oldURL := strings.Trim(oldToken, `"'`)
 	// Keep only the path: a query on links[0] would not survive an origin
 	// swap cleanly (Cardigann bases are bare origins in practice).
 	pathSuffix := "/"
-	if u, err := url.Parse(unquoted); err == nil && u.Path != "" {
+	if u, err := url.Parse(oldURL); err == nil && u.Path != "" {
 		pathSuffix = u.Path
 	}
 	// Preserve quoting style of the original token.
@@ -209,26 +220,120 @@ func rewriteLinksFirstEntry(raw, newOrigin, oldOrigin string) (string, bool) {
 		newToken = newOrigin + pathSuffix
 	}
 
-	rest := line[tokenEnd:]
-	// Replace an existing rotated-from note, else append one (block style only).
-	rotatedNote := " # rotated-from: " + oldOrigin
-	if idx := strings.Index(rest, "rotated-from:"); idx >= 0 {
-		// Keep any user comment text before the note; replace the note itself.
-		before := rest[:idx]
-		if before != "" && !strings.HasSuffix(before, " ") {
-			before += " "
+	rest := stripRotatedFromNote(line[tokenEnd:])
+	lines[scalar.Line-1] = line[:col] + newToken + rest
+
+	// History insert (best-effort): the links sequence rewrite above did
+	// not change the line count, so parse Line numbers stay valid.
+	var linksNextKeyLine int
+	if linksKeyIdx >= 0 && linksKeyIdx+2 < len(mapping.Content) {
+		linksNextKeyLine = mapping.Content[linksKeyIdx+2].Line
+	}
+	lines, _ = appendLegacyLink(lines, legacySeq, linksNextKeyLine, linksSeq, oldURL)
+	return strings.Join(lines, "\n"), true
+}
+
+// stripRotatedFromNote removes a legacy inline "rotated-from: <url>" note
+// from the remainder of a rewritten links[0] line, preserving any user
+// comment text around it. The delivered trail used a single "#" comment
+// marker, optionally prefixed with user text joined by " | ".
+func stripRotatedFromNote(rest string) string {
+	idx := strings.Index(rest, "rotated-from:")
+	if idx < 0 {
+		return rest
+	}
+	before := strings.TrimRight(rest[:idx], " \t")
+	// Drop the " | " (or "|") joiner that preceded the note, if any.
+	before = strings.TrimSuffix(before, "|")
+	before = strings.TrimRight(before, " \t")
+	// A remainder that is only a comment marker (possibly with spaces)
+	// was entirely the note: drop it.
+	if strings.TrimLeft(before, " \t") == "#" || strings.TrimSpace(before) == "" {
+		return ""
+	}
+	return before
+}
+
+// appendLegacyLink inserts oldURL into the legacylinks sequence (created
+// after the links block when absent). Best-effort: exotic shapes log a
+// warning and return ok=false; the caller keeps the links[0] rewrite.
+// Note: comments sitting after the last existing item but before the next
+// root key will end up after the new item — acceptable for this trail.
+func appendLegacyLink(lines []string, legacySeq *yaml.Node, linksNextKeyLine int, linksSeq *yaml.Node, oldURL string) ([]string, bool) {
+	if legacySeq != nil {
+		if legacySeq.Kind != yaml.SequenceNode {
+			slog.Warn("domain rotation history skipped: legacylinks is not a sequence")
+			return lines, false
 		}
-		rest = before + "rotated-from: " + oldOrigin
-	} else if strings.TrimSpace(rest) == "" {
-		rest = rotatedNote
-	} else if strings.HasPrefix(strings.TrimSpace(rest), "#") {
-		rest = strings.TrimRight(rest, " ") + " | rotated-from: " + oldOrigin
-	} else {
-		rest = rotatedNote + rest
+		for _, item := range legacySeq.Content {
+			if strings.Contains(item.Value, "\n") {
+				slog.Warn("domain rotation history skipped: multi-line legacylinks item")
+				return lines, false
+			}
+			if strings.Trim(item.Value, `"'`) == oldURL {
+				return lines, true // already recorded
+			}
+		}
+		if legacySeq.Style == yaml.FlowStyle {
+			return appendLegacyFlow(lines, legacySeq, oldURL)
+		}
+		if len(legacySeq.Content) == 0 {
+			slog.Warn("domain rotation history skipped: empty block legacylinks")
+			return lines, false
+		}
+		// Dash column comes from the SEQUENCE node, not the item (yaml.v3
+		// items report the value column).
+		indent := strings.Repeat(" ", legacySeq.Column-1)
+		insertIdx := legacySeq.Content[len(legacySeq.Content)-1].Line // 1-based → insert after
+		return slices.Insert(lines, insertIdx, indent+"- "+oldURL), true
 	}
 
-	lines[scalar.Line-1] = line[:col] + newToken + rest
-	return strings.Join(lines, "\n"), true
+	// No legacylinks key: insert a new block after the links sequence
+	// (before the next root key, or at EOF preserving the trailing newline).
+	if linksSeq == nil || len(linksSeq.Content) == 0 {
+		return lines, false
+	}
+	itemIndent := strings.Repeat(" ", linksSeq.Column-1)
+	block := []string{"legacylinks:", itemIndent + "- " + oldURL}
+	if linksNextKeyLine > 0 {
+		return slices.Insert(lines, linksNextKeyLine-1, block...), true
+	}
+	// EOF: insert before the final empty element when raw ended with \n.
+	insertIdx := len(lines)
+	if insertIdx > 0 && lines[insertIdx-1] == "" {
+		insertIdx--
+	}
+	return slices.Insert(lines, insertIdx, block...), true
+}
+
+// appendLegacyFlow appends oldURL to a single-line flow sequence. Items
+// containing "]" or quotes (IPv6 literals, quoted strings) defeat a naive
+// bracket search and are refused.
+func appendLegacyFlow(lines []string, legacySeq *yaml.Node, oldURL string) ([]string, bool) {
+	for _, item := range legacySeq.Content {
+		if strings.ContainsAny(item.Value, `]"`) {
+			slog.Warn("domain rotation history skipped: legacylinks flow item defeats bracket search")
+			return lines, false
+		}
+	}
+	row := legacySeq.Line - 1
+	if row < 0 || row >= len(lines) {
+		return lines, false
+	}
+	line := lines[row]
+	closeIdx := strings.LastIndex(line, "]")
+	if closeIdx < 0 {
+		slog.Warn("domain rotation history skipped: legacylinks flow closing bracket not on key line")
+		return lines, false
+	}
+	var inserted string
+	if len(legacySeq.Content) == 0 {
+		inserted = oldURL // [] → [url], no comma
+	} else {
+		inserted = ", " + oldURL
+	}
+	lines[row] = line[:closeIdx] + inserted + line[closeIdx:]
+	return lines, true
 }
 
 // scalarTokenEnd returns the index (exclusive) in line where the scalar
