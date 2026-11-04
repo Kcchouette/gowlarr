@@ -1,6 +1,6 @@
 ---
 feature: theoldschool-api-search
-status: in-progress
+status: delivered
 updated: 2026-11-04
 source: feat/theoldschool-api-search
 ---
@@ -8,6 +8,21 @@ source: feat/theoldschool-api-search
 # The Old School via Cardigann
 
 ## Report
+
+**What was built** — The Old School is searchable in gowlarr through the
+existing corpus definition `theoldschool-api.yml`: enablement is
+configuration-only (README section), regression coverage lives in cardigann-go
+against a verbatim fixture + end-to-end engine test, and three engine gaps the
+test exposed are fixed (Json.NET bracket indexes, dateparse colon offsets,
+`leechers` → `release.Peers`). Upload remains out of scope by design.
+
+**Verification** — cardigann-go `go test -count=1 ./...` PASS (all packages,
+includes `TestSearch_TheOldSchoolFixture{,_Freeleech}` and
+`TestCorpusFixture_*` for the new fixture); gowlarr `make test`
+(`go test -race -count=1 ./...`) PASS (all packages); `golangci-lint run`
+0 issues in both worktrees; `gofmt -l` clean. Neutral independent review:
+APPROVE (all T1–T6 criteria MET, no correctness bugs). Live verification
+with a real API token (T7) remains for the user — see task list.
 
 ## [S1] Problem
 
@@ -115,3 +130,7 @@ parsed but not propagated anyway). `mapCategories` is a no-op for TOS
 - JSON `case` keys `False`/`True` vs lowercase JSON booleans: observed
   case-sensitivity mismatch with Prowlarr semantics; left unchanged
   (out of scope, cosmetic — see S2.3).
+- Post-implementation neutral review: first reviewer hung mid-run and was
+  cancelled; a fresh reviewer returned `APPROVE` (T1–T6 all MET, no
+  criticals, one non-blocking nit: freeleech test doesn't assert the search
+  path).
