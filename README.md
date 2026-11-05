@@ -101,6 +101,22 @@ gowlarr indexer enable/disable <id>          # Enable/disable
 gowlarr indexer remove <id>                   # Remove
 ```
 
+#### Private tracker example (The Old School)
+
+The Old School (theoldschool.cc) ships a JSON API definition in the synced
+corpus; the only setting required is your API token (site *My Settings →
+API Key*):
+
+```bash
+gowlarr defs sync
+gowlarr indexer add theoldschool-api --setting apikey=YOUR_TOKEN --id tos
+gowlarr indexer test tos
+gowlarr search "some show" --indexer tos --json
+```
+
+Results are torrent-protocol; TV searches accept
+`--type tvsearch --season N --episode N`.
+
 ### Search
 
 ```bash
